@@ -1,6 +1,6 @@
 # Envoy Dns filter
 This project implements a L4 Udp Filter based on [envoy proxy](https://github.com/envoyproxy). 
-The structure of the repo is adopted from the sample ['echo2'](https://github.com/envoyproxy/envoy-filter-example) filter example.
+The repo is adopted from the sample ['echo2'](https://github.com/envoyproxy/envoy-filter-example) filter example.
 
 ## Building
 
