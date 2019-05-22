@@ -1,0 +1,43 @@
+admin:
+  access_log_path: /dev/null
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 0
+static_resources:
+  clusters:
+    name: cluster_0
+    load_assignment:
+      cluster_name: cluster_0
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 0
+  listeners:
+    name: listener_0
+    address:
+      socket_address:
+        address: 127.0.0.1
+        port_value: 0
+    listener_filters:
+      - name: dns
+        typed_config:
+          "@type": type.googleapis.com/envoy.config.filter.listener.udp.DnsConfig 
+          client_settings:
+            name_servers: 
+              - "10.10.101.10"
+              - "20.10.10.10"
+            recursive_query_timeout: 10s
+          server_settings:
+            ndots: 5
+            ttl: 10s
+          dns_entries:
+            - host_name: "a.b.c.com"
+              cluster_name: "abc"
+            - host_name: "x.y.z.in"
+              cluster_name: ""
+    filter_chains:
+      - filters:

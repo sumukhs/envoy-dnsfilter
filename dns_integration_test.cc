@@ -2,16 +2,16 @@
 #include "test/integration/utility.h"
 
 namespace Envoy {
-class Echo2IntegrationTest : public BaseIntegrationTest,
-                             public testing::TestWithParam<Network::Address::IpVersion> {
+class DnsIntegrationTest : public BaseIntegrationTest,
+                           public testing::TestWithParam<Network::Address::IpVersion> {
 
   std::string echoConfig() {
     return TestEnvironment::readFileToStringForTest(
-        TestEnvironment::runfilesPath("echo2_server.yaml"));
+        TestEnvironment::runfilesPath("dns_test_filter.yaml"));
   }
 
 public:
-  Echo2IntegrationTest() : BaseIntegrationTest(GetParam(), echoConfig()) {}
+  DnsIntegrationTest() : BaseIntegrationTest(GetParam(), echoConfig()) {}
   /**
    * Initializer for an individual integration test.
    */
@@ -26,21 +26,16 @@ public:
   }
 };
 
-INSTANTIATE_TEST_CASE_P(IpVersions, Echo2IntegrationTest,
+INSTANTIATE_TEST_CASE_P(IpVersions, DnsIntegrationTest,
                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
 
-TEST_P(Echo2IntegrationTest, Echo) {
+TEST_P(DnsIntegrationTest, Empty) {
   Buffer::OwnedImpl buffer("hello");
-  std::string response;
   RawConnectionDriver connection(
       lookupPort("listener_0"), buffer,
-      [&](Network::ClientConnection&, const Buffer::Instance& data) -> void {
-        response.append(data.toString());
-        connection.close();
-      },
+      [&](Network::ClientConnection&, const Buffer::Instance&) -> void { connection.close(); },
       GetParam());
 
   connection.run();
-  EXPECT_EQ("hello", response);
 }
 } // namespace Envoy
