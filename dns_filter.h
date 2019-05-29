@@ -1,6 +1,5 @@
 #pragma once
 
-#include "envoy/network/address.h"
 #include "envoy/network/filter.h"
 
 #include "common/common/logger.h"

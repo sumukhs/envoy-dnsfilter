@@ -24,7 +24,8 @@ envoy_cc_test(
     repository = "@envoy",
     deps = [
         ":dns_filter",
-        "@envoy//test/integration:integration_lib"
+        ":dns_config_factory",
+        "@envoy//test/integration:integration_lib",
     ],
 )
 
@@ -59,6 +60,7 @@ envoy_cc_library(
         "@envoy//include/envoy/registry:registry",
         "@envoy//include/envoy/server:filter_config_interface",
         ":dns_config",
+        ":dns_filter",
     ],
 )
 
@@ -68,6 +70,11 @@ envoy_cc_library(
     hdrs = [ "dns_filter.h" ],
     repository = "@envoy",
     deps = [
-        ":dns_config_factory",
+        "@envoy//include/envoy/buffer:buffer_interface",
+        "@envoy//source/common/common:assert_lib",
+        "@envoy//source/common/common:minimal_logger_lib",
+        "@envoy//include/envoy/network:address_interface",
+        "@envoy//include/envoy/network:connection_interface",
+        ":dns_config",
     ],
 )

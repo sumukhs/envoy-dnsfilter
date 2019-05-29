@@ -23,7 +23,7 @@ static_resources:
         address: 127.0.0.1
         port_value: 0
     listener_filters:
-      - name: dns
+      - name: envoy.listener.udp.dns
         typed_config:
           "@type": type.googleapis.com/envoy.config.filter.listener.udp.DnsConfig 
           client_settings:
