@@ -24,35 +24,26 @@ message DnsConfig {
 // Client specific settings of the Dns filter where the filter is acting as a dns client
 // issuing dns requests to other name servers
 message ClientSettings {
-  // Only allow upto 5 name servers
-  repeated string name_servers = 1 
-  [(validate.rules).repeated = {min_items:1, max_items:5}];
-
   // The timeout in milliseconds for recursive Dns queries issued to name_servers
   // The default value if not specified is 5000. (5 seconds)
-  google.protobuf.Duration recursive_query_timeout = 2;
+  google.protobuf.Duration recursive_query_timeout = 1;
 }
 
 // Server specific settings of the Dns filter where the filter is acting as a dns server
 // responding to dns requests
 message ServerSettings {
-  // ndots cannot be greater than 8 for Horizon because the max dns query can be:
-  //    (_port._protocol.partitionkey.partition.servicename.service.clustername.cluster.horizon)
-  google.protobuf.UInt32Value ndots = 1
-  [(validate.rules).uint32.lte = 8];
-
   // The TTL in milliseconds that is set on Dns query responses
   // The default value if not specified is 5000. (5 seconds)
-  google.protobuf.Duration ttl = 2;
+  google.protobuf.Duration ttl = 1;
 }
 
 // Provides the mapping from a dns name to a cluster name for the dns filter to 
 // look up the endpoint address and respond back to the dns request
 message DnsClusterEntry {
 
-  // The incoming dns request host name
-  string host_name = 1;
-  // TODO: add this back after it is implemented by pgv
+  // The incoming dns request fully qualified domain name
+  string fqdn = 1;
+  // TODO(sumukhs): add this back after it is implemented by pgv
   // [(validate.rules).string.hostname = true];
 
   // The matching cluster name - One of the lb end points from the cluster is returned
