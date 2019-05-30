@@ -1,6 +1,7 @@
 #pragma once
 
 #include "envoy/network/filter.h"
+#include "envoy/network/listener.h"
 
 #include "common/common/logger.h"
 
@@ -12,14 +13,14 @@ namespace ListenerFilters {
 namespace Dns {
 
 /**
- * Implements the Dns filter. 
+ * Implements the Dns filter.
  */
-class DnsFilter : public Network::ListenerFilter, Logger::Loggable<Logger::Id::filter> {
+class DnsFilter : public Network::UdpListenerReadFilter, Logger::Loggable<Logger::Id::filter> {
 public:
-  DnsFilter(const Config& config);
+  DnsFilter(const Config& config, Network::UdpReadFilterCallbacks& callbacks);
 
-  // Network::ListenerFilter
-  Network::FilterStatus onAccept(Network::ListenerFilterCallbacks& cb) override;
+  // Network::UdpListenerReadFilter
+  void onData(Network::UdpRecvData& data) override;
 
 private:
   Config config_;

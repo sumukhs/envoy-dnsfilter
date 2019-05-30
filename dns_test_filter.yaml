@@ -22,22 +22,17 @@ static_resources:
       socket_address:
         address: 127.0.0.1
         port_value: 0
+        protocol: UDP
     listener_filters:
       - name: envoy.listener.udp.dns
         typed_config:
           "@type": type.googleapis.com/envoy.config.filter.listener.udp.DnsConfig 
           client_settings:
-            name_servers: 
-              - "10.10.101.10"
-              - "20.10.10.10"
             recursive_query_timeout: 10s
           server_settings:
-            ndots: 5
             ttl: 10s
           dns_entries:
-            - host_name: "a.b.c.com"
+            - fqdn: "a.b.c.com"
               cluster_name: "abc"
-            - host_name: "x.y.z.in"
+            - fqdn: "x.y.z.in"
               cluster_name: ""
-    filter_chains:
-      - filters:

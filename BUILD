@@ -71,6 +71,7 @@ envoy_cc_library(
     repository = "@envoy",
     deps = [
         "@envoy//include/envoy/buffer:buffer_interface",
+        "@envoy//include/envoy/network:listener_interface",
         "@envoy//source/common/common:assert_lib",
         "@envoy//source/common/common:minimal_logger_lib",
         "@envoy//include/envoy/network:address_interface",

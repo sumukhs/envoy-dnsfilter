@@ -9,11 +9,10 @@ namespace Dns {
 
 /**
  * Config registration for the dns filter.
- * TODO: Make this derive from Udp filter config factory
  */
-class DnsConfigFactory : public Server::Configuration::NamedListenerFilterConfigFactory {
+class DnsConfigFactory : public Server::Configuration::NamedUdpListenerFilterConfigFactory {
 public:
-  Network::ListenerFilterFactoryCb
+  Network::UdpListenerFilterFactoryCb
   createFilterFactoryFromProto(const Protobuf::Message& message,
                                Server::Configuration::ListenerFactoryContext&) override;
 

@@ -17,7 +17,7 @@ namespace Dns {
 
 const std::string DnsFilterName = "envoy.listener.udp.dns";
 
-Network::ListenerFilterFactoryCb
+Network::UdpListenerFilterFactoryCb
 DnsConfigFactory::createFilterFactoryFromProto(const Protobuf::Message& message,
                                                Server::Configuration::ListenerFactoryContext&) {
   auto proto_config =
@@ -25,8 +25,9 @@ DnsConfigFactory::createFilterFactoryFromProto(const Protobuf::Message& message,
           message);
 
   Config config(proto_config);
-  return [config](Network::ListenerFilterManager& filter_manager) -> void {
-    filter_manager.addAcceptFilter(std::make_unique<DnsFilter>(config));
+  return [config](Network::UdpListenerFilterManager& filter_manager,
+            Network::UdpReadFilterCallbacks& callbacks) -> void {
+    filter_manager.addReadFilter(std::make_unique<DnsFilter>(config, callbacks));
   };
 }
 
@@ -39,7 +40,7 @@ std::string DnsConfigFactory::name() { return DnsFilterName; }
 /**
  * Static registration for the dns filter. @see RegisterFactory.
  */
-REGISTER_FACTORY(DnsConfigFactory, Server::Configuration::NamedListenerFilterConfigFactory);
+REGISTER_FACTORY(DnsConfigFactory, Server::Configuration::NamedUdpListenerFilterConfigFactory);
 
 } // namespace Dns
 } // namespace ListenerFilters
