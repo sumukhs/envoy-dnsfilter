@@ -1,15 +1,16 @@
 #include "dns_filter.h"
+#include "dns_resolver_impl.h"
 
 #include "common/common/assert.h"
-#include "common/common/logger.h"
 
 namespace Envoy {
 namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-DnsFilter::DnsFilter(const Config& config, Network::UdpReadFilterCallbacks& callbacks)
-    : UdpListenerReadFilter(callbacks), config_(config) {}
+DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks)
+    : UdpListenerReadFilter(callbacks), config_(std::move(config)),
+      dns_resolver_(std::make_shared<DnsResolverImpl>(*config_)) {}
 
 void DnsFilter::onData(Network::UdpRecvData& data) {
   ENVOY_LOG(debug, "DnsFilter: Got {} bytes from {}", data.buffer_->length(),

@@ -66,6 +66,20 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "dns_resolver_impl",
+    srcs = [ "dns_resolver_impl.cc" ],
+    hdrs = [ "dns_resolver_impl.h" ],
+    repository = "@envoy",
+    deps = [
+        "@envoy//source/common/common:assert_lib",
+        "@envoy//source/common/common:minimal_logger_lib",
+        "@envoy//include/envoy/network:address_interface",
+        "@envoy//include/envoy/network:dns_interface",
+        ":dns_config",
+    ],
+)
+
+envoy_cc_library(
     name = "dns_filter",
     srcs = [ "dns_filter.cc" ],
     hdrs = [ "dns_filter.h" ],
@@ -78,5 +92,6 @@ envoy_cc_library(
         "@envoy//include/envoy/network:address_interface",
         "@envoy//include/envoy/network:connection_interface",
         ":dns_config",
+        ":dns_resolver_impl",
     ],
 )

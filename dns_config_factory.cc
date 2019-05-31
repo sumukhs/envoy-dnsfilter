@@ -1,4 +1,4 @@
-#include <string>
+#include <memory>
 
 #include "dns_config_factory.h"
 
@@ -24,10 +24,10 @@ DnsConfigFactory::createFilterFactoryFromProto(const Protobuf::Message& message,
       MessageUtil::downcastAndValidate<const envoy::config::filter::listener::udp::DnsConfig&>(
           message);
 
-  Config config(proto_config);
-  return [config](Network::UdpListenerFilterManager& filter_manager,
-            Network::UdpReadFilterCallbacks& callbacks) -> void {
-    filter_manager.addReadFilter(std::make_unique<DnsFilter>(config, callbacks));
+  return [&proto_config](Network::UdpListenerFilterManager& filter_manager,
+                         Network::UdpReadFilterCallbacks& callbacks) -> void {
+    filter_manager.addReadFilter(
+        std::make_unique<DnsFilter>(std::make_unique<Config>(proto_config), callbacks));
   };
 }
 
