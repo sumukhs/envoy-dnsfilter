@@ -30,9 +30,10 @@ static_resources:
           client_settings:
             recursive_query_timeout: 10s
           server_settings:
+            known_domainname_suffixes:
+              - "a.b.c.com"
+              - "x.y.z.com"  
             ttl: 10s
-          dns_entries:
-            - fqdn: "a.b.c.com"
-              cluster_name: "abc"
-            - fqdn: "x.y.z.in"
-              cluster_name: ""
+            dns_entries:
+              a.b.c.com: abccluster
+              x.y.z.in: cluster1

@@ -7,46 +7,50 @@ import "google/protobuf/wrappers.proto";
 
 import "validate/validate.proto";
 
-// [#protodoc-title: Dns Filter]
-// The configuration protobuf definition for the Dns filter
+// [#protodoc-title: DNS Filter]
+// The configuration protobuf definition for the DNS filter. The DNS filter handles requests for A, AAAA and SRV questions.
+// Queries for other types of records are not handled.
+// If the DNS request is for a domain name that the DNS filter does not handle, the query is made using a standard DNS client
+// to one of the name servers specified in /etc/resolv.conf file.
 message DnsConfig {
 
-  // Client specific settings of the Dns filter where the filter is acting as a client
+  // Client specific settings of the DNS filter where the filter is acting as a client
   ClientSettings client_settings = 1;
 
-  // Server specific settings of the Dns filter where the filter is acting as a dns server
+  // Server specific settings of the DNS filter where the filter is acting as a dns server
   ServerSettings server_settings = 2;
-
-  repeated DnsClusterEntry dns_entries = 3
-  [(validate.rules).repeated = {min_items:1}];
 }
 
-// Client specific settings of the Dns filter where the filter is acting as a dns client
+// Client specific settings of the DNS filter where the filter is acting as a dns client
 // issuing dns requests to other name servers
 message ClientSettings {
-  // The timeout in milliseconds for recursive Dns queries issued to name_servers
+  // The timeout in milliseconds for recursive DNS queries issued to name_servers
   // The default value if not specified is 5000. (5 seconds)
   google.protobuf.Duration recursive_query_timeout = 1;
 }
 
-// Server specific settings of the Dns filter where the filter is acting as a dns server
+// Server specific settings of the DNS filter where the filter is acting as a dns server
 // responding to dns requests
 message ServerSettings {
-  // The TTL in milliseconds that is set on Dns query responses
+
+  // A list of known domain names that the server handles requests for. When the incoming DNS request has a 
+  // suffix that does NOT match one of the suffixes listed here, the query is forwarded to an external name server
+  // that is specified in the /etc/resolv.conf file using a DNS client.
+  //
+  // When the DNS request matches a given suffix, the DNS filter tries to look for a matching entry in the dns_entries
+  // map. If not present, NXDOMAIN is returned as the response.
+  repeated string known_domainname_suffixes = 1
+  [(validate.rules).repeated = {min_items:1}];
+
+  // The TTL in milliseconds that is set on DNS query responses
   // The default value if not specified is 5000. (5 seconds)
-  google.protobuf.Duration ttl = 1;
-}
+  google.protobuf.Duration ttl = 2;
 
-// Provides the mapping from a dns name to a cluster name for the dns filter to 
-// look up the endpoint address and respond back to the dns request
-message DnsClusterEntry {
-
-  // The incoming dns request fully qualified domain name
-  string fqdn = 1;
-  // TODO(sumukhs): add this back after it is implemented by pgv
-  // [(validate.rules).string.hostname = true];
-
-  // The matching cluster name - One of the lb end points from the cluster is returned
-  // as the response
-  string cluster_name = 2;
+  // Provides the mapping from a dns name to a cluster name for the dns filter to 
+  // look up the endpoint address and respond back to the dns request
+  //
+  // The key is the fully qualified domain name of the incoming dns request.
+  // The value is the matching cluster name:- One of the lb endpoints from the cluster is
+  // returned in the response to the request.
+  map<string, string> dns_entries = 3;
 }

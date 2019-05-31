@@ -47,6 +47,7 @@ envoy_cc_library(
     repository = "@envoy",
     deps = [
         ":dns_proto_cc",
+        "@envoy//source/common/protobuf:utility_lib",
     ],
 )
 
