@@ -14,7 +14,7 @@ class DnsConfigFactory : public Server::Configuration::NamedUdpListenerFilterCon
 public:
   Network::UdpListenerFilterFactoryCb
   createFilterFactoryFromProto(const Protobuf::Message& message,
-                               Server::Configuration::ListenerFactoryContext&) override;
+                               Server::Configuration::ListenerFactoryContext& context) override;
 
   ProtobufTypes::MessagePtr createEmptyConfigProto() override;
 

@@ -1,14 +1,12 @@
 #include <memory>
 
-#include "dns_config_factory.h"
+#include "src/dns_config_factory.h"
 
 #include "envoy/registry/registry.h"
 
-#include "dns.pb.h"
-#include "dns.pb.validate.h"
-
-#include "dns_config.h"
-#include "dns_filter.h"
+#include "src/dns_config.h"
+#include "src/dns.pb.validate.h"
+#include "src/dns_filter.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -17,17 +15,16 @@ namespace Dns {
 
 const std::string DnsFilterName = "envoy.listener.udp.dns";
 
-Network::UdpListenerFilterFactoryCb
-DnsConfigFactory::createFilterFactoryFromProto(const Protobuf::Message& message,
-                                               Server::Configuration::ListenerFactoryContext&) {
+Network::UdpListenerFilterFactoryCb DnsConfigFactory::createFilterFactoryFromProto(
+    const Protobuf::Message& message, Server::Configuration::ListenerFactoryContext& context) {
   auto proto_config =
       MessageUtil::downcastAndValidate<const envoy::config::filter::listener::udp::DnsConfig&>(
           message);
 
-  return [&proto_config](Network::UdpListenerFilterManager& filter_manager,
-                         Network::UdpReadFilterCallbacks& callbacks) -> void {
+  return [proto_config, &context](Network::UdpListenerFilterManager& filter_manager,
+                                           Network::UdpReadFilterCallbacks& callbacks) -> void {
     filter_manager.addReadFilter(
-        std::make_unique<DnsFilter>(std::make_unique<Config>(proto_config), callbacks));
+        std::make_unique<DnsFilter>(std::make_unique<ConfigImpl>(proto_config), callbacks, context.dispatcher(), context.clusterManager()));
   };
 }
 

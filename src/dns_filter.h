@@ -8,9 +8,18 @@
 
 #include "common/common/logger.h"
 
-#include "dns_config.h"
+#include "src/dns_config.h"
 
 namespace Envoy {
+
+namespace Upstream {
+class ClusterManager;
+}
+
+namespace Event {
+class Dispatcher;
+}
+
 namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
@@ -22,14 +31,15 @@ class Config;
  */
 class DnsFilter : public Network::UdpListenerReadFilter, Logger::Loggable<Logger::Id::filter> {
 public:
-  DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks);
+  DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
+            Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager);
 
   // Network::UdpListenerReadFilter
   void onData(Network::UdpRecvData& data) override;
 
 private:
   std::unique_ptr<Config> config_;
-  Network::DnsResolverSharedPtr dns_resolver_;
+  Network::DnsResolverSharedPtr dns_server_;
 };
 
 } // namespace Dns

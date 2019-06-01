@@ -1,4 +1,4 @@
-#include "dns_config.h"
+#include "src/dns_config.h"
 #include "common/common/fmt.h"
 #include "common/protobuf/utility.h"
 
@@ -7,7 +7,7 @@ namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-Config::Config(const envoy::config::filter::listener::udp::DnsConfig& config)
+ConfigImpl::ConfigImpl(const envoy::config::filter::listener::udp::DnsConfig& config)
     : recursive_query_timeout_(std::chrono::milliseconds(
           PROTOBUF_GET_MS_OR_DEFAULT(config.client_settings(), recursive_query_timeout, 5000))),
       known_domain_names_(), ttl_(std::chrono::milliseconds(
@@ -30,15 +30,15 @@ Config::Config(const envoy::config::filter::listener::udp::DnsConfig& config)
   }
 }
 
-std::chrono::milliseconds Config::recursiveQueryTimeout() const { return recursive_query_timeout_; }
+std::chrono::milliseconds ConfigImpl::recursiveQueryTimeout() const { return recursive_query_timeout_; }
 
-bool Config::isKnownDomainName(std::string const& domain_name) const {
+bool ConfigImpl::isKnownDomainName(const std::string& domain_name) const {
   return (known_domain_names_.find(domain_name) != known_domain_names_.end());
 }
 
-std::chrono::milliseconds Config::ttl() const { return ttl_; }
+std::chrono::milliseconds ConfigImpl::ttl() const { return ttl_; }
 
-const std::unordered_map<std::string, std::string>& Config::dnsMap() const { return dns_map_; }
+const std::unordered_map<std::string, std::string>& ConfigImpl::dnsMap() const { return dns_map_; }
 
 } // namespace Dns
 } // namespace ListenerFilters

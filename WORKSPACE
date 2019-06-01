@@ -1,4 +1,4 @@
-workspace(name = "envoy_filter_example")
+workspace(name = "envoy_dns_filter")
 
 local_repository(
     name = "envoy",

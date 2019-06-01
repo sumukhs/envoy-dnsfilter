@@ -1,5 +1,5 @@
-#include "dns_filter.h"
-#include "dns_resolver_impl.h"
+#include "src/dns_filter.h"
+#include "src/dns_server.h"
 
 #include "common/common/assert.h"
 
@@ -8,9 +8,10 @@ namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks)
+DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
+                     Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager)
     : UdpListenerReadFilter(callbacks), config_(std::move(config)),
-      dns_resolver_(std::make_shared<DnsResolverImpl>(*config_)) {}
+      dns_server_(std::make_shared<DnsServer>(*config_, dispatcher, cluster_manager)) {}
 
 void DnsFilter::onData(Network::UdpRecvData& data) {
   ENVOY_LOG(debug, "DnsFilter: Got {} bytes from {}", data.buffer_->length(),

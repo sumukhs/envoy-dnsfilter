@@ -7,7 +7,7 @@ class DnsIntegrationTest : public BaseIntegrationTest,
 
   std::string echoConfig() {
     return TestEnvironment::readFileToStringForTest(
-        TestEnvironment::runfilesPath("dns_test_filter.yaml"));
+        TestEnvironment::runfilesPath("test/dns_test_filter.yaml"));
   }
 
 public:
