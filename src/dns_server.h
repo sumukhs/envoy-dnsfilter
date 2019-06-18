@@ -1,45 +1,44 @@
 #pragma once
 
-#include <chrono>
-
-#include "common/common/logger.h"
-#include "envoy/network/dns.h"
+#include <list>
+#include <string>
+#include "src/dns_codec.h"
 
 namespace Envoy {
-
-namespace Upstream {
-class ClusterManager;
-}
-
-namespace Event {
-class Dispatcher;
-}
 
 namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-class Config;
-
 /**
  * Resolves domain names that are expected to be known to the DNS filter.
  * If the domain name is not known, the request is made on the DNS resolver impl
  */
-class DnsServer : public Network::DnsResolver, protected Logger::Loggable<Logger::Id::filter> {
+class DnsServer {
 public:
-  DnsServer(const Config& config, Event::Dispatcher& dispatcher,
-            Upstream::ClusterManager& cluster_manager);
+  virtual ~DnsServer() = default;
 
-  // Network::DnsResolver
-  Network::ActiveDnsQuery* resolve(const std::string& dns_name,
-                                   Network::DnsLookupFamily dns_lookup_family,
-                                   Network::DnsResolver::ResolveCb callback) override;
+  /**
+   * Called when a resolution attempt is complete.
+   * @param response_code supplies the response code for the dns query.
+   * @param address_list supplies the list of resolved IP addresses. The list will be empty if
+   *                     the response_code is not NoError.
+   */
+  typedef std::function<void(
+      const Formats::ResponseCode response_code,
+      const std::list<Network::Address::InstanceConstSharedPtr>&& address_list)>
+      ResolveCallback;
 
-private:
-  const Config& config_;
-  Event::Dispatcher& dispatcher_;
-  Upstream::ClusterManager& cluster_manager_;
-  Network::DnsResolverSharedPtr dns_resolver_;
+  /**
+   * Resolves the dns_name.
+   *
+   * @param record_type is the type of record to resolve.
+   * @param dns_name domain to resolve.
+   * @param callback to be invoked when the result is available
+   */
+  virtual void resolve(
+      const Formats::RecordType record_type,
+      const std::string& dns_name, ResolveCallback callback) PURE;
 };
 
 } // namespace Dns

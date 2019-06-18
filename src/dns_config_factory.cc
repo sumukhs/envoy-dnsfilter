@@ -24,7 +24,7 @@ Network::UdpListenerFilterFactoryCb DnsConfigFactory::createFilterFactoryFromPro
   return [proto_config, &context](Network::UdpListenerFilterManager& filter_manager,
                                            Network::UdpReadFilterCallbacks& callbacks) -> void {
     filter_manager.addReadFilter(
-        std::make_unique<DnsFilter>(std::make_unique<ConfigImpl>(proto_config), callbacks, context.dispatcher(), context.clusterManager()));
+        std::make_unique<ProdDnsFilter>(std::make_unique<ConfigImpl>(proto_config), callbacks, context.dispatcher(), context.clusterManager()));
   };
 }
 
