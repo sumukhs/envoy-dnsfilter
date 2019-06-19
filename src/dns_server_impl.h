@@ -31,7 +31,7 @@ public:
                 Upstream::ClusterManager& cluster_manager);
 
   // DnsServer
-  void resolve(const Formats::RecordType record_type, const std::string& dns_name,
+  void resolve(const int record_type, const std::string& dns_name,
                ResolveCallback callback) override;
 
 private:

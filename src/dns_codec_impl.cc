@@ -1,11 +1,6 @@
-#include <arpa/inet.h>
-#include <arpa/nameser.h>
-#include <arpa/nameser_compat.h>
-
 #include "ares_dns.h"
 
 #include "src/dns_codec_impl.h"
-
 #include "common/common/assert.h"
 
 namespace Envoy {
@@ -89,8 +84,7 @@ uint16_t DecoderImpl::HeaderSectionImpl::arCount() const { return DNS_HEADER_ARC
  */
 DecoderImpl::QuestionSectionImpl::QuestionSectionImpl() : q_Name_(), q_Type_(0), q_Class_(0) {}
 
-void DecoderImpl::QuestionSectionImpl::decode(Buffer::Instance&) {
-}
+void DecoderImpl::QuestionSectionImpl::decode(Buffer::Instance&) {}
 
 void DecoderImpl::QuestionSectionImpl::encode(Buffer::Instance&) {}
 
@@ -123,7 +117,7 @@ void DecoderImpl::QuestionSectionImpl::ThrowIfNotSupported() {
 DecoderImpl::DecoderImpl(DecoderCallbacks& callbacks) : callbacks_(callbacks) {}
 
 void DecoderImpl::decode(Buffer::Instance& data,
-                         const Network::Address::InstanceConstSharedPtr& from) {
+                         const Network::Address::InstanceConstSharedPtr&) {
   ENVOY_LOG(trace, "decoding {} bytes", data.length());
 }
 

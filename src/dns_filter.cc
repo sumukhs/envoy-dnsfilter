@@ -49,7 +49,7 @@ void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message,
 
   DnsServer::ResolveCallback resolve_callback =
       [this, dns_message,
-       from](const Formats::ResponseCode response_code,
+       from](const int response_code,
              const std::list<Network::Address::InstanceConstSharedPtr>&& address_list) {
         this->onResolveComplete(dns_message, from, response_code, std::move(address_list));
       };
@@ -59,11 +59,11 @@ void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message,
 
 void DnsFilter::onResolveComplete(Formats::MessageSharedPtr,
                                   const Network::Address::InstanceConstSharedPtr& from,
-                                  const Formats::ResponseCode response_code,
+                                  const int response_code,
                                   const std::list<Network::Address::InstanceConstSharedPtr>&&) {
 
-  ENVOY_LOG(info, "dns resolve complete status: {} for request from {}",
-            static_cast<int>(response_code), from->asString());
+  ENVOY_LOG(info, "dns resolve complete status: {} for request from {}", response_code,
+            from->asString());
 
   // TODO(sumukhs): Encode and send the reply to the from address
 }

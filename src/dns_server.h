@@ -25,7 +25,7 @@ public:
    *                     the response_code is not NoError.
    */
   typedef std::function<void(
-      const Formats::ResponseCode response_code,
+      const int response_code,
       const std::list<Network::Address::InstanceConstSharedPtr>&& address_list)>
       ResolveCallback;
 
@@ -36,9 +36,8 @@ public:
    * @param dns_name domain to resolve.
    * @param callback to be invoked when the result is available
    */
-  virtual void resolve(
-      const Formats::RecordType record_type,
-      const std::string& dns_name, ResolveCallback callback) PURE;
+  virtual void resolve(const int record_type, const std::string& dns_name,
+                       ResolveCallback callback) PURE;
 };
 
 } // namespace Dns

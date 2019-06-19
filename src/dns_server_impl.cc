@@ -7,6 +7,7 @@
 #include "envoy/upstream/upstream.h"
 
 #include "src/dns_server_impl.h"
+#include "src/dns_codec_impl.h"
 #include "src/dns_config.h"
 
 namespace Envoy {
@@ -19,18 +20,21 @@ DnsServerImpl::DnsServerImpl(const Config& config, Event::Dispatcher& dispatcher
     : config_(config), dispatcher_(dispatcher), cluster_manager_(cluster_manager), dns_resolver_() {
 }
 
-void DnsServerImpl::resolve(const Formats::RecordType record_type, const std::string& dns_name,
+void DnsServerImpl::resolve(const int record_type, const std::string& dns_name,
                             ResolveCallback callback) {
   switch (record_type) {
-  case Formats::RecordType::A:
+  case T_A:
     resolve(dns_name, true, false, callback);
     break;
-  case Formats::RecordType::AAAA:
+  case T_AAAA:
     resolve(dns_name, true, true, callback);
     break;
-  case Formats::RecordType::SRV:
+  case T_SRV:
     resolve(dns_name, false, false, callback);
     break;
+  default:
+    // Checked by QuestionSection.
+    NOT_REACHED_GCOVR_EXCL_LINE;
   }
 }
 
@@ -43,7 +47,7 @@ void DnsServerImpl::resolve(const std::string& dns_name, bool recurse_if_notfoun
 
     if (!recurse_if_notfound) {
       ENVOY_LOG(debug, "DnsFilter: Unknown domain name {}. Returning NXDomain", dns_name);
-      callback(Formats::ResponseCode::NameError, {});
+      callback(NXDOMAIN, {});
       return;
     }
 
@@ -58,13 +62,13 @@ void DnsServerImpl::resolve(const std::string& dns_name, bool recurse_if_notfoun
         [callback,
          dns_name](const std::list<Network::Address::InstanceConstSharedPtr>&& results) -> void {
           if (!results.empty()) {
-            callback(Formats::ResponseCode::NoError, std::move(results));
+            callback(NOERROR, std::move(results));
           }
 
           ENVOY_LOG(debug, "DnsFilter: dns name {} mapping failed to resolve using client",
                     dns_name);
 
-          callback(Formats::ResponseCode::ServerFailure, {});
+          callback(SERVFAIL, {});
         });
     return;
   }
@@ -72,7 +76,7 @@ void DnsServerImpl::resolve(const std::string& dns_name, bool recurse_if_notfoun
   const auto& dns_map_it = config_.dnsMap().find(dns_name);
   if (dns_map_it == config_.dnsMap().end()) {
     ENVOY_LOG(debug, "DnsFilter: dns name {} mapping does not exist. Returning NXDomain", dns_name);
-    callback(Formats::ResponseCode::NameError, {});
+    callback(NXDOMAIN, {});
     return;
   }
 
@@ -83,7 +87,7 @@ void DnsServerImpl::resolve(const std::string& dns_name, bool recurse_if_notfoun
               "DnsFilter: cluster {} for dns name {} does not exist. Returning Server failure as "
               "this could be transient.",
               cluster_name, dns_name);
-    callback(Formats::ResponseCode::ServerFailure, {});
+    callback(SERVFAIL, {});
     return;
   }
 
@@ -99,7 +103,7 @@ void DnsServerImpl::resolve(const std::string& dns_name, bool recurse_if_notfoun
     }
   }
 
-  callback(Formats::ResponseCode::NoError, std::move(address_list));
+  callback(NOERROR, std::move(address_list));
 
   return;
 }

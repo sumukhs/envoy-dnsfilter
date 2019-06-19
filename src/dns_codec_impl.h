@@ -4,6 +4,10 @@
 #include "common/common/logger.h"
 #include "common/buffer/buffer_impl.h"
 
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <arpa/nameser_compat.h>
+
 namespace Envoy {
 namespace Extensions {
 namespace ListenerFilters {

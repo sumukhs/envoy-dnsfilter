@@ -51,7 +51,7 @@ private:
 
   void onResolveComplete(Formats::MessageSharedPtr dns_message,
                          const Network::Address::InstanceConstSharedPtr& from,
-                         const Formats::ResponseCode response_code,
+                         const int response_code,
                          const std::list<Network::Address::InstanceConstSharedPtr>&& address_list);
 
   std::unique_ptr<Config> config_;

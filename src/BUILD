@@ -70,6 +70,7 @@ envoy_cc_library(
         "@envoy//source/common/common:minimal_logger_lib",
         "@envoy//source/common/network:dns_lib",
         ":dns_server",
+        ":dns_codec_impl",
     ],
 )
 
@@ -85,7 +86,6 @@ envoy_cc_library(
         "@envoy//source/common/common:assert_lib",
         "@envoy//source/common/common:minimal_logger_lib",
         ":dns_config",
-        ":dns_codec_impl",
         ":dns_server_impl",
     ],
 )
