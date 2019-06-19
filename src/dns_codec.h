@@ -86,13 +86,6 @@ namespace Formats {
 enum class MessageType { Query, Response };
 
 /**
- * Support only these 3 record types
- */
-enum class RecordType { A, AAAA, SRV };
-
-enum class ResponseCode { NoError, FormatError, ServerFailure, NameError, NotImplemented, Refused };
-
-/**
  * A DNS header section
  */
 class HeaderSection {
@@ -116,29 +109,14 @@ public:
   virtual MessageType qrCode() const PURE;
 
   /**
-   * Sets the authoritative answer bit to true/false
-   */
-  virtual void aaBit(bool value) PURE;
-
-  /**
-   * Gets the recursion desired bit
-   */
-  virtual bool rd() const PURE;
-
-  /**
-   * Sets the recursion available bit to true/false
-   */
-  virtual void raBit(bool value) PURE;
-
-  /**
    * Gets the response code
    */
-  virtual ResponseCode rCode() const PURE;
+  virtual int rCode() const PURE;
 
   /**
    * Sets the response code
    */
-  virtual void rCode(ResponseCode response_code) PURE;
+  virtual void rCode(int response_code) PURE;
 
   /**
    * Gets the question count
@@ -182,9 +160,9 @@ public:
   virtual void encode(Buffer::Instance& buffer) PURE;
 
   /**
-   * The question type
+   * The question type - T_A or other types
    */
-  virtual RecordType qType() const PURE;
+  virtual int qType() const PURE;
 
   /**
    * Domain name
