@@ -45,7 +45,7 @@ void DnsFilter::doDecode(Buffer::Instance& buffer,
 
 void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message,
                         const Network::Address::InstanceConstSharedPtr& from) {
-  Formats::QuestionSection* question = dns_message->questionSection();
+  Formats::QuestionRecordConstSharedPtr question = dns_message->questionRecord();
 
   DnsServer::ResolveCallback resolve_callback =
       [this, dns_message,

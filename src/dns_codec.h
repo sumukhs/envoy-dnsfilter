@@ -83,25 +83,51 @@ namespace Dns {
  */
 namespace Formats {
 
+class HeaderSection;
+typedef std::unique_ptr<HeaderSection> HeaderSectionPtr;
+
+class QuestionRecord;
+typedef std::shared_ptr<const QuestionRecord> QuestionRecordConstSharedPtr;
+
+class ResourceRecord;
+typedef std::unique_ptr<ResourceRecord> ResourceRecordPtr;
+
+class Message;
+typedef std::shared_ptr<Message> MessageSharedPtr;
+
 enum class MessageType { Query, Response };
+
+class Decoder {
+public:
+  virtual ~Decoder() = default;
+
+  /**
+   * Decode the header from a DNS request.
+   * @param request is the slice to the original DNS request
+   * @param offset is the offset to the content within the request.
+   *
+   * @return the size of the section decoded in bytes.
+   * API Throws an EnvoyException if the buffer is smaller than the expected size.
+   */
+  virtual size_t decode(Buffer::RawSlice& dns_request, size_t offset) PURE;
+};
+
+class Encoder {
+public:
+  virtual ~Encoder() = default;
+
+  /**
+   * Encode the contents of the header to a response.
+   */
+  virtual void encode(Buffer::Instance& dns_response) const PURE;
+};
 
 /**
  * A DNS header section
  */
-class HeaderSection {
+class HeaderSection : public Decoder, public Encoder {
 public:
   virtual ~HeaderSection() = default;
-
-  /**
-   * Decode the contents of the buffer to a header. Drain the buffer as needed.
-   * Throws an EnvoyException if the buffer is smaller than the expected size of the header.
-   */
-  virtual void decode(Buffer::Instance& data) PURE;
-
-  /**
-   * Encode the contents of the header to a buffer.
-   */
-  virtual void encode(Buffer::Instance& buffer) PURE;
 
   /**
    * Gets the query or response bit
@@ -111,12 +137,12 @@ public:
   /**
    * Gets the response code
    */
-  virtual int rCode() const PURE;
+  virtual uint rCode() const PURE;
 
   /**
    * Sets the response code
    */
-  virtual void rCode(int response_code) PURE;
+  virtual void rCode(uint response_code) PURE;
 
   /**
    * Gets the question count
@@ -139,30 +165,17 @@ public:
   virtual uint16_t arCount() const PURE;
 };
 
-typedef std::unique_ptr<HeaderSection> HeaderSectionPtr;
-
 /**
- * The question section in the DNS message
+ * The question record in the DNS message
  */
-class QuestionSection {
+class QuestionRecord : public Decoder, public Encoder {
 public:
-  virtual ~QuestionSection() = default;
-
-  /**
-   * Decode the contents of the buffer to a question. Drain the buffer as needed.
-   * Throws an EnvoyException if the buffer is smaller than the expected size of the header.
-   */
-  virtual void decode(Buffer::Instance& data) PURE;
-
-  /**
-   * Encode the contents of the question section to a buffer.
-   */
-  virtual void encode(Buffer::Instance& buffer) PURE;
+  virtual ~QuestionRecord() = default;
 
   /**
    * The question type - T_A or other types
    */
-  virtual int qType() const PURE;
+  virtual uint qType() const PURE;
 
   /**
    * Domain name
@@ -170,77 +183,49 @@ public:
   virtual const std::string& qName() const PURE;
 };
 
-typedef std::unique_ptr<QuestionSection> QuestionSectionPtr;
-
 /**
  * The resource record in the DNS message
  */
-class ResourceRecord {
+class ResourceRecord : public Encoder {
 public:
   virtual ~ResourceRecord() = default;
-
-  /**
-   * Creates an 'A' resource record from the IPv4 address specified.
-   */
-  static ResourceRecord CreateARecord(const Network::Address::Ipv4& address);
-
-  /**
-   * Creates an 'AAAA' resource record from the IPv6 address specified.
-   */
-  static ResourceRecord CreateAAAARecord(const Network::Address::Ipv6& address);
-
-  /**
-   * Creates a 'SRV' resource record for the given port and domain.
-   */
-  static ResourceRecord CreateSRVRecord(uint16_t port, const std::string& domain);
 };
 
-typedef std::unique_ptr<ResourceRecord> ResourceRecordPtr;
-
 /**
- * Represents a DNS Message. Each Message contains the following
- * Header
- * 'n' QuestionSections - Depending on the qdCount in header
- * 'n'
+ * Represents a DNS Message
  */
-class Message {
+class Message : public Decoder, public Encoder {
 public:
   virtual ~Message() = default;
 
   /**
-   * Decode the contents of the buffer to a dns message. Drain the buffer as needed.
-   * Throws an EnvoyException if the buffer is smaller than the expected size of the message.
-   */
-  virtual void decode(Buffer::Instance& data) PURE;
-
-  /**
-   * Encode the contents of the message to a buffer.
-   */
-  virtual void encode(Buffer::Instance& buffer) PURE;
-
-  /**
    * The header section of the message
    */
-  virtual HeaderSection* headerSection() PURE;
+  virtual HeaderSection& headerSection() PURE;
 
   /**
-   * The question section of the message
-   * TODO(sumukhs): Support multiple questions
+   * The question record of the message
    */
-  virtual QuestionSection* questionSection() PURE;
+  virtual QuestionRecordConstSharedPtr questionRecord() PURE;
 
   /**
-   * The answer section
+   * Add the A resource record from the address specified.
    */
-  virtual std::vector<ResourceRecord*>& answerSection() PURE;
+  virtual void AddARecord(const QuestionRecordConstSharedPtr& question, uint ttl,
+                          const Network::Address::InstanceConstSharedPtr& address) PURE;
 
   /**
-   * Add an answer to the answers section
+   * Add the AAAA resource record from the address specified.
    */
-  virtual void addAnswer(const ResourceRecord& answer) PURE;
+  virtual void AddAAAARecord(const QuestionRecordConstSharedPtr& question, uint ttl,
+                             const Network::Address::InstanceConstSharedPtr& address) PURE;
+
+  /**
+   * Add the SRV resource record from the address specified.
+   */
+  virtual void AddSRVRecord(const QuestionRecordConstSharedPtr& question, uint ttl, uint port,
+                            const std::string& host) PURE;
 };
-
-typedef std::shared_ptr<Message> MessageSharedPtr;
 
 } // namespace Formats
 

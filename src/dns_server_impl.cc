@@ -33,7 +33,7 @@ void DnsServerImpl::resolve(const int record_type, const std::string& dns_name,
     resolve(dns_name, false, false, callback);
     break;
   default:
-    // Checked by QuestionSection.
+    // Checked by QuestionRecordImpl.
     NOT_REACHED_GCOVR_EXCL_LINE;
   }
 }
