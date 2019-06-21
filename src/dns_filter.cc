@@ -13,9 +13,15 @@ namespace Dns {
 
 DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
                      Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager)
-    : UdpListenerReadFilter(callbacks), config_(std::move(config)),
-      dns_server_(std::make_unique<DnsServerImpl>(*config_, dispatcher, cluster_manager)),
-      decoder_() {}
+    : UdpListenerReadFilter(callbacks), config_(std::move(config)), dns_server_(), decoder_() {
+  DnsServer::ResolveCallback resolve_callback =
+      [this](const Formats::MessageSharedPtr& dns_response, Buffer::Instance& serialized_response) {
+        this->onResolveComplete(dns_response, serialized_response);
+      };
+
+  dns_server_ =
+      std::make_unique<DnsServerImpl>(resolve_callback, *config_, dispatcher, cluster_manager);
+}
 
 void DnsFilter::onData(Network::UdpRecvData& data) {
   ENVOY_LOG(debug, "DnsFilter: Got {} bytes from {}", data.buffer_->length(),
@@ -43,29 +49,21 @@ void DnsFilter::doDecode(Buffer::Instance& buffer,
   }
 }
 
-void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message,
-                        const Network::Address::InstanceConstSharedPtr& from) {
-  Formats::QuestionRecordConstSharedPtr question = dns_message->questionRecord();
-
-  DnsServer::ResolveCallback resolve_callback =
-      [this, dns_message,
-       from](const int response_code,
-             const std::list<Network::Address::InstanceConstSharedPtr>&& address_list) {
-        this->onResolveComplete(dns_message, from, response_code, std::move(address_list));
-      };
-
-  dns_server_->resolve(question->qType(), question->qName(), resolve_callback);
+void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message) {
+  dns_server_->resolve(dns_message);
 }
 
-void DnsFilter::onResolveComplete(Formats::MessageSharedPtr,
-                                  const Network::Address::InstanceConstSharedPtr& from,
-                                  const int response_code,
-                                  const std::list<Network::Address::InstanceConstSharedPtr>&&) {
+void DnsFilter::onResolveComplete(const Formats::MessageSharedPtr& dns_message,
+                                  Buffer::Instance& serialized_response) {
+  ENVOY_LOG(info, "dns resolve complete status: {} for request {} type {} from {}",
+            dns_message->header().rCode(), dns_message->questionRecord().qName(),
+            dns_message->questionRecord().qType(), dns_message->from()->asString());
 
-  ENVOY_LOG(info, "dns resolve complete status: {} for request from {}", response_code,
-            from->asString());
+  Network::UdpSendData send_data{dns_message->from(), serialized_response};
 
-  // TODO(sumukhs): Encode and send the reply to the from address
+  read_callbacks_->udpListener().send(send_data);
+
+  return;
 }
 
 } // namespace Dns

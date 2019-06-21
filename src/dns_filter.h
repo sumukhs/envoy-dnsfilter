@@ -43,16 +43,13 @@ public:
   void onData(Network::UdpRecvData& data) override;
 
   // DecoderCallbacks
-  void onQuery(Formats::MessageSharedPtr dns_message,
-               const Network::Address::InstanceConstSharedPtr& from) override;
+  void onQuery(Formats::MessageSharedPtr dns_message) override;
 
 private:
   void doDecode(Buffer::Instance& buffer, Network::Address::InstanceConstSharedPtr const& from);
 
-  void onResolveComplete(Formats::MessageSharedPtr dns_message,
-                         const Network::Address::InstanceConstSharedPtr& from,
-                         const int response_code,
-                         const std::list<Network::Address::InstanceConstSharedPtr>&& address_list);
+  void onResolveComplete(const Formats::MessageSharedPtr& dns_response,
+                         Buffer::Instance& serialized_response);
 
   std::unique_ptr<Config> config_;
   std::unique_ptr<DnsServer> dns_server_;

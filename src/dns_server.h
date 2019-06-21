@@ -19,25 +19,25 @@ public:
   virtual ~DnsServer() = default;
 
   /**
-   * Called when a resolution attempt is complete.
-   * @param response_code supplies the response code for the dns query.
-   * @param address_list supplies the list of resolved IP addresses. The list will be empty if
-   *                     the response_code is not NoError.
+   * Called when a resolution attempt for IP address is complete.
+   * @param dns_response supplies the response message for the dns query.
+   * @param serialized_response supplies the buffer with the response serialized.
    */
-  typedef std::function<void(
-      const int response_code,
-      const std::list<Network::Address::InstanceConstSharedPtr>&& address_list)>
+  typedef std::function<void(const Formats::MessageSharedPtr& dns_response,
+                             Buffer::Instance& serialized_response)>
       ResolveCallback;
 
   /**
    * Resolves the dns_name.
    *
-   * @param record_type is the type of record to resolve.
-   * @param dns_name domain to resolve.
-   * @param callback to be invoked when the result is available
+   * @param dns_request to resolve.
    */
-  virtual void resolve(const int record_type, const std::string& dns_name,
-                       ResolveCallback callback) PURE;
+  virtual void resolve(Formats::MessageSharedPtr dns_request) PURE;
+
+protected:
+  DnsServer(const ResolveCallback& resolve_callback) : resolve_callback_(resolve_callback) {}
+
+  ResolveCallback resolve_callback_;
 };
 
 } // namespace Dns

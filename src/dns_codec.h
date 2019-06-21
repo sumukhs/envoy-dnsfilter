@@ -13,10 +13,42 @@ namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
+namespace Formats {
+
+class Header;
+typedef std::unique_ptr<Header> HeaderPtr;
+
+// A const pointer is created since the question cannot change once constructed
+class QuestionRecord;
+typedef std::shared_ptr<const QuestionRecord> QuestionRecordConstSharedPtr;
+
+// A const pointer is created since the resource record cannot change once constructed
+class ResourceRecord;
+typedef std::unique_ptr<const ResourceRecord> ResourceRecordConstPtr;
+
+class Message;
+typedef std::shared_ptr<Message> MessageSharedPtr;
+
+enum class MessageType { Query, Response };
+
+enum class ResourceRecordSection { Answer, Additional };
+
+class Encode {
+public:
+  virtual ~Encode() = default;
+
+  /**
+   * Encode the contents to a dns_response.
+   */
+  virtual void encode(Buffer::Instance& dns_response) const PURE;
+};
+
 /**
  * Taken from the link below:
  * https://tools.ietf.org/html/rfc1035
- *
+ */
+
+/**
  * DNS Message:
     +---------------------+
     |        Header       |
@@ -28,8 +60,43 @@ namespace Dns {
     |      Authority      | RRs pointing toward an authority
     +---------------------+
     |      Additional     | RRs holding additional information
+*/
+class Message : public Encode {
+public:
+  virtual ~Message() = default;
 
-  * Header
+  virtual const Network::Address::InstanceConstSharedPtr& from() const PURE;
+
+  /**
+   * The header section of the message
+   */
+  virtual Header& header() PURE;
+
+  /**
+   * The question record of the message
+   */
+  virtual const QuestionRecord& questionRecord() const PURE;
+
+  /**
+   * Add the A resource record for the address specified.
+   */
+  virtual void addARecord(ResourceRecordSection section, uint16_t ttl,
+                          const Network::Address::Ipv4* address) PURE;
+
+  /**
+   * Add the AAAA resource record for the address specified.
+   */
+  virtual void addAAAARecord(ResourceRecordSection section, uint16_t ttl,
+                             const Network::Address::Ipv6* address) PURE;
+
+  /**
+   * Add the SRV resource record for the address specified.
+   */
+  virtual void addSRVRecord(uint16_t ttl, uint16_t port, const std::string& host) PURE;
+};
+
+/**
+  * Header:
                                     1  1  1  1  1  1
       0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
     +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
@@ -45,89 +112,10 @@ namespace Dns {
     +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
     |                    ARCOUNT                    |
     +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-
-  * Question
-                                    1  1  1  1  1  1
-      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                                               |
-    /                     QNAME                     /
-    /                                               /
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                     QTYPE                     |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                     QCLASS                    |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-
-  * Answer/Authority/Additional
-                                    1  1  1  1  1  1
-      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                                               |
-    /                                               /
-    /                      NAME                     /
-    |                                               |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                      TYPE                     |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                     CLASS                     |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                      TTL                      |
-    |                                               |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    |                   RDLENGTH                    |
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
-    /                     RDATA                     /
-    /                                               /
-    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
- */
-namespace Formats {
-
-class HeaderSection;
-typedef std::unique_ptr<HeaderSection> HeaderSectionPtr;
-
-class QuestionRecord;
-typedef std::shared_ptr<const QuestionRecord> QuestionRecordConstSharedPtr;
-
-class ResourceRecord;
-typedef std::unique_ptr<ResourceRecord> ResourceRecordPtr;
-
-class Message;
-typedef std::shared_ptr<Message> MessageSharedPtr;
-
-enum class MessageType { Query, Response };
-
-class Decoder {
+*/
+class Header {
 public:
-  virtual ~Decoder() = default;
-
-  /**
-   * Decode the header from a DNS request.
-   * @param request is the slice to the original DNS request
-   * @param offset is the offset to the content within the request.
-   *
-   * @return the size of the section decoded in bytes.
-   * API Throws an EnvoyException if the buffer is smaller than the expected size.
-   */
-  virtual size_t decode(Buffer::RawSlice& dns_request, size_t offset) PURE;
-};
-
-class Encoder {
-public:
-  virtual ~Encoder() = default;
-
-  /**
-   * Encode the contents of the header to a response.
-   */
-  virtual void encode(Buffer::Instance& dns_response) const PURE;
-};
-
-/**
- * A DNS header section
- */
-class HeaderSection : public Decoder, public Encoder {
-public:
-  virtual ~HeaderSection() = default;
+  virtual ~Header() = default;
 
   /**
    * Gets the query or response bit
@@ -137,12 +125,22 @@ public:
   /**
    * Gets the response code
    */
-  virtual uint rCode() const PURE;
+  virtual uint16_t rCode() const PURE;
 
   /**
    * Sets the response code
    */
-  virtual void rCode(uint response_code) PURE;
+  virtual void rCode(uint16_t response_code) PURE;
+
+  /**
+   * Sets the AA bit (Authoritative Answer)
+   */
+  virtual void aa(bool value) PURE;
+
+  /**
+   * Sets the RA bit (Recursion Available)
+   */
+  virtual void ra(bool value) PURE;
 
   /**
    * Gets the question count
@@ -166,65 +164,76 @@ public:
 };
 
 /**
- * The question record in the DNS message
- */
-class QuestionRecord : public Decoder, public Encoder {
+  * Question
+                                    1  1  1  1  1  1
+      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                                               |
+    /                     QNAME                     /
+    /                                               /
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     QTYPE                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     QCLASS                    |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+*/
+class QuestionRecord {
 public:
   virtual ~QuestionRecord() = default;
-
-  /**
-   * The question type - T_A or other types
-   */
-  virtual uint qType() const PURE;
 
   /**
    * Domain name
    */
   virtual const std::string& qName() const PURE;
+
+  /**
+   * The question type - T_A or other types
+   */
+  virtual uint16_t qType() const PURE;
 };
 
 /**
- * The resource record in the DNS message
+  * Answer/Authority/Additional
+                                    1  1  1  1  1  1
+      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                                               |
+    /                                               /
+    /                      NAME                     /
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TYPE                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     CLASS                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TTL                      |
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                   RDLENGTH                    |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
+    /                     RDATA                     /
+    /                                               /
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
  */
-class ResourceRecord : public Encoder {
+class ResourceRecord {
 public:
   virtual ~ResourceRecord() = default;
-};
-
-/**
- * Represents a DNS Message
- */
-class Message : public Decoder, public Encoder {
-public:
-  virtual ~Message() = default;
 
   /**
-   * The header section of the message
+   * Domain name
    */
-  virtual HeaderSection& headerSection() PURE;
+  virtual const std::string& name() const PURE;
 
   /**
-   * The question record of the message
+   * The type - T_A or other types
    */
-  virtual QuestionRecordConstSharedPtr questionRecord() PURE;
+  virtual uint16_t type() const PURE;
 
-  /**
-   * Add the A resource record from the address specified.
-   */
-  virtual void AddARecord(const QuestionRecordConstSharedPtr& question, uint ttl,
-                          const Network::Address::InstanceConstSharedPtr& address) PURE;
+  virtual uint16_t ttl() const PURE;
 
-  /**
-   * Add the AAAA resource record from the address specified.
-   */
-  virtual void AddAAAARecord(const QuestionRecordConstSharedPtr& question, uint ttl,
-                             const Network::Address::InstanceConstSharedPtr& address) PURE;
+  virtual uint16_t rdLength() const PURE;
 
-  /**
-   * Add the SRV resource record from the address specified.
-   */
-  virtual void AddSRVRecord(const QuestionRecordConstSharedPtr& question, uint ttl, uint port,
-                            const std::string& host) PURE;
+  virtual const unsigned char* rData() const PURE;
 };
 
 } // namespace Formats
@@ -236,8 +245,7 @@ class DecoderCallbacks {
 public:
   virtual ~DecoderCallbacks() = default;
 
-  virtual void onQuery(Formats::MessageSharedPtr dns_message,
-                       const Network::Address::InstanceConstSharedPtr& from) PURE;
+  virtual void onQuery(Formats::MessageSharedPtr dns_message) PURE;
 };
 
 /**
