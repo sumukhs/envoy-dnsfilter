@@ -40,11 +40,29 @@ void encodeDomainString(Buffer::Instance& dns_response, const std::string& name)
   dns_response.add(&size, sizeof(size));
 }
 
+// This is in network byte order
+void add2DnsBytes(Buffer::Instance& dns_response, uint16_t value) {
+  uint16_t dns_value = htons(value);
+  dns_response.add(&dns_value, 2);
+}
+
+// This is in network byte order
+void add4DnsBytes(Buffer::Instance& dns_response, uint32_t value) {
+  uint32_t dns_value = htonl(value);
+  dns_response.add(&dns_value, 4);
+}
+
 } // namespace
 
 // Begin HeaderSectionImpl
 DecoderImpl::HeaderSectionImpl::HeaderSectionImpl() : header_() {
   std::fill(std::begin(header_), std::end(header_), 0);
+}
+
+DecoderImpl::HeaderSectionImpl::HeaderSectionImpl(const HeaderSectionImpl& request_header) {
+  for (uint i = 0; i < HFIXEDSZ; i++) {
+    header_[i] = request_header.header_[i];
+  }
 }
 
 Formats::MessageType DecoderImpl::HeaderSectionImpl::qrCode() const {
@@ -61,9 +79,7 @@ void DecoderImpl::HeaderSectionImpl::rCode(uint16_t response_code) {
   setResponseBit();
 }
 
-void DecoderImpl::HeaderSectionImpl::aa(bool value) { DNS_HEADER_SET_AA(&header_[0], value); }
-
-void DecoderImpl::HeaderSectionImpl::ra(bool value) { DNS_HEADER_SET_RA(&header_[0], value); }
+bool DecoderImpl::HeaderSectionImpl::rd() const { return DNS_HEADER_RD(&header_[0]); }
 
 uint16_t DecoderImpl::HeaderSectionImpl::qdCount() const { return DNS_HEADER_QDCOUNT(&header_[0]); }
 
@@ -74,6 +90,16 @@ uint16_t DecoderImpl::HeaderSectionImpl::nsCount() const { return DNS_HEADER_NSC
 uint16_t DecoderImpl::HeaderSectionImpl::arCount() const { return DNS_HEADER_ARCOUNT(&header_[0]); }
 
 void DecoderImpl::HeaderSectionImpl::setResponseBit() { DNS_HEADER_SET_QR(&header_[0], 1); }
+
+void DecoderImpl::HeaderSectionImpl::resetAnswerCounts() {
+  DNS_HEADER_SET_ANCOUNT(&header_[0], 0);
+  DNS_HEADER_SET_NSCOUNT(&header_[0], 0);
+  DNS_HEADER_SET_ARCOUNT(&header_[0], 0);
+}
+
+void DecoderImpl::HeaderSectionImpl::aa(bool value) { DNS_HEADER_SET_AA(&header_[0], value); }
+
+void DecoderImpl::HeaderSectionImpl::ra(bool value) { DNS_HEADER_SET_RA(&header_[0], value); }
 
 void DecoderImpl::HeaderSectionImpl::setAnCount(uint16_t count) {
   DNS_HEADER_SET_ANCOUNT(&header_[0], count);
@@ -119,9 +145,12 @@ void DecoderImpl::HeaderSectionImpl::ThrowIfNotSupported() {
 // End HeaderSectionImpl
 
 // Begin QuestionRecordImpl
-unsigned char DecoderImpl::QuestionRecordImpl::QUESTION_FIXED_SIZE[QFIXEDSZ];
-
 DecoderImpl::QuestionRecordImpl::QuestionRecordImpl() : q_name_(), q_type_(0), q_class_(0) {}
+
+DecoderImpl::QuestionRecordImpl::QuestionRecordImpl(
+    const DecoderImpl::QuestionRecordImpl& request_question)
+    : q_name_(request_question.q_name_), q_type_(request_question.q_type_),
+      q_class_(request_question.q_class_) {}
 
 uint16_t DecoderImpl::QuestionRecordImpl::qType() const { return q_type_; }
 
@@ -163,10 +192,8 @@ size_t DecoderImpl::QuestionRecordImpl::decode(Buffer::RawSlice& request, size_t
 void DecoderImpl::QuestionRecordImpl::encode(Buffer::Instance& dns_response) const {
   encodeDomainString(dns_response, q_name_);
 
-  DNS_QUESTION_SET_TYPE(QUESTION_FIXED_SIZE, q_type_);
-  DNS_QUESTION_SET_CLASS(QUESTION_FIXED_SIZE, q_class_);
-
-  dns_response.add(&QUESTION_FIXED_SIZE[0], QFIXEDSZ);
+  add2DnsBytes(dns_response, q_type_);
+  add2DnsBytes(dns_response, q_class_);
 }
 
 void DecoderImpl::QuestionRecordImpl::ThrowIfNotSupported() {
@@ -182,33 +209,31 @@ void DecoderImpl::QuestionRecordImpl::ThrowIfNotSupported() {
 // End QuestionRecordImpl
 
 // Begin ResourceRecordImpl
-unsigned char DecoderImpl::ResourceRecordImpl::TWO_BYTES[2];
+DecoderImpl::ResourceRecordImpl::ResourceRecordImpl(const std::string& name, uint16_t type,
+                                                    uint32_t ttl)
+    : name_(name), type_(type), ttl_(ttl) {}
 
-DecoderImpl::ResourceRecordImpl::ResourceRecordImpl(
-    const QuestionRecordImplConstSharedPtr& question, uint16_t ttl)
-    : question_(question), ttl_(ttl) {}
+const std::string& DecoderImpl::ResourceRecordImpl::name() const { return name_; }
 
-const std::string& DecoderImpl::ResourceRecordImpl::name() const { return question_->qName(); }
+uint16_t DecoderImpl::ResourceRecordImpl::type() const { return type_; }
 
-uint16_t DecoderImpl::ResourceRecordImpl::type() const { return question_->qType(); }
-
-uint16_t DecoderImpl::ResourceRecordImpl::ttl() const { return ttl_; }
+uint32_t DecoderImpl::ResourceRecordImpl::ttl() const { return ttl_; }
 
 void DecoderImpl::ResourceRecordImpl::encode(Buffer::Instance& dns_response) const {
-  // Encode the question first - This contains name, type and class
-  question_->encode(dns_response);
+  // Encode the name, type and class
+  encodeDomainString(dns_response, name_);
+  add2DnsBytes(dns_response, type_);
+  add2DnsBytes(dns_response, 1); // class is always 1
 
   // Encode the TTL next
-  DNS__SET16BIT(TWO_BYTES, ttl_);
-  dns_response.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
+  add4DnsBytes(dns_response, ttl_);
 
   // Rest of the fields are encoded in sub classes
 }
 
-DecoderImpl::ResourceRecordAImpl::ResourceRecordAImpl(
-    const QuestionRecordImplConstSharedPtr& question, uint16_t ttl,
-    const Network::Address::Ipv4* address)
-    : ResourceRecordImpl(question, ttl), address_(address->address()) {}
+DecoderImpl::ResourceRecordAImpl::ResourceRecordAImpl(const std::string& name, uint32_t ttl,
+                                                      const Network::Address::Ipv4* address)
+    : ResourceRecordImpl(name, T_A, ttl), address_(address->address()) {}
 
 uint16_t DecoderImpl::ResourceRecordAImpl::rdLength() const {
   return static_cast<uint16_t>(sizeof(address_));
@@ -221,15 +246,18 @@ const unsigned char* DecoderImpl::ResourceRecordAImpl::rData() const {
 void DecoderImpl::ResourceRecordAImpl::encode(Buffer::Instance& dns_response) const {
   ResourceRecordImpl::encode(dns_response);
 
-  DNS__SET16BIT(TWO_BYTES, sizeof(address_));
-  dns_response.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
-  dns_response.add(&address_, sizeof(address_));
+  ASSERT(sizeof(address_) == 4, "Size of A Record address must be 4 bytes");
+
+  // Write the length first - it is only 2 bytes
+  add2DnsBytes(dns_response, 4);
+
+  // The address_ is already in network byte order
+  dns_response.add(&address_, 4);
 }
 
-DecoderImpl::ResourceRecordAAAAImpl::ResourceRecordAAAAImpl(
-    const QuestionRecordImplConstSharedPtr& question, uint16_t ttl,
-    const Network::Address::Ipv6* address)
-    : ResourceRecordImpl(question, ttl), address_(address->address()) {}
+DecoderImpl::ResourceRecordAAAAImpl::ResourceRecordAAAAImpl(const std::string& name, uint32_t ttl,
+                                                            const Network::Address::Ipv6* address)
+    : ResourceRecordImpl(name, T_AAAA, ttl), address_(address->address()) {}
 
 uint16_t DecoderImpl::ResourceRecordAAAAImpl::rdLength() const {
   return static_cast<uint16_t>(sizeof(address_));
@@ -242,15 +270,19 @@ const unsigned char* DecoderImpl::ResourceRecordAAAAImpl::rData() const {
 void DecoderImpl::ResourceRecordAAAAImpl::encode(Buffer::Instance& dns_response) const {
   ResourceRecordImpl::encode(dns_response);
 
-  DNS__SET16BIT(TWO_BYTES, sizeof(address_));
-  dns_response.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
-  dns_response.add(&address_, sizeof(address_));
+  ASSERT(sizeof(address_) == 16, "Size of AAAA Record address must be 16 bytes");
+
+  // Write the length first - it is only 2 bytes
+  add2DnsBytes(dns_response, 16);
+
+  // The address_ is already in network byte order
+  dns_response.add(&address_, 16);
 }
 
-DecoderImpl::ResourceRecordSRVImpl::ResourceRecordSRVImpl(
-    const QuestionRecordImplConstSharedPtr& question, uint16_t ttl, uint16_t port,
-    const std::string& host)
-    : ResourceRecordImpl(question, ttl), port_(port), host_(host), rdLength_(0), encoded_r_data_() {
+DecoderImpl::ResourceRecordSRVImpl::ResourceRecordSRVImpl(const std::string& name, uint32_t ttl,
+                                                          uint16_t port, const std::string& host)
+    : ResourceRecordImpl(name, T_SRV, ttl), port_(port), host_(host), rdLength_(0),
+      encoded_r_data_() {
   encodeRData();
 }
 
@@ -263,26 +295,23 @@ const unsigned char* DecoderImpl::ResourceRecordSRVImpl::rData() const {
 void DecoderImpl::ResourceRecordSRVImpl::encode(Buffer::Instance& dns_response) const {
   ResourceRecordImpl::encode(dns_response);
 
-  // Write the length first
-  DNS__SET16BIT(TWO_BYTES, rdLength_);
-  dns_response.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
+  // Write the length first - it is only 2 bytes
+  add2DnsBytes(dns_response, rdLength_);
+
   dns_response.add(encoded_r_data_);
 }
 
 void DecoderImpl::ResourceRecordSRVImpl::encodeRData() {
-  ASSERT(encoded_r_data_.length() != 0, "ResourceRecordSRVImpl already encoded r data.");
+  ASSERT(encoded_r_data_.length() == 0, "ResourceRecordSRVImpl already encoded r data.");
 
   Buffer::OwnedImpl host_buffer;
   encodeDomainString(host_buffer, host_);
   rdLength_ = 6 + host_buffer.length();
 
   // TODO(sumukhs) - Take in the priority and weight
-  DNS__SET16BIT(TWO_BYTES, 0);
-  encoded_r_data_.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
-  DNS__SET16BIT(TWO_BYTES, 0);
-  encoded_r_data_.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
-  DNS__SET16BIT(TWO_BYTES, port_);
-  encoded_r_data_.add(&TWO_BYTES[0], sizeof(TWO_BYTES));
+  add2DnsBytes(encoded_r_data_, 0);
+  add2DnsBytes(encoded_r_data_, 0);
+  add2DnsBytes(encoded_r_data_, port_);
   encoded_r_data_.add(host_buffer);
 
   linearized_pointer_to_encoded_r_data_ = encoded_r_data_.linearize(rdLength_);
@@ -293,57 +322,45 @@ void DecoderImpl::ResourceRecordSRVImpl::encodeRData() {
 DecoderImpl::MessageImpl::MessageImpl(const Network::Address::InstanceConstSharedPtr& from)
     : from_(from), header_(), question_(), answers_() {}
 
+DecoderImpl::MessageImpl::MessageImpl(const MessageImpl& request_message)
+    : from_(request_message.from()), header_(request_message.header_),
+      question_(request_message.question_), answers_() {}
+
 const Network::Address::InstanceConstSharedPtr& DecoderImpl::MessageImpl::from() const {
   return from_;
 }
 
-Formats::Header& DecoderImpl::MessageImpl::header() { return *header_; }
+const Formats::Header& DecoderImpl::MessageImpl::header() const { return header_; }
 
 const Formats::QuestionRecord& DecoderImpl::MessageImpl::questionRecord() const {
-  return *question_;
+  return question_;
 }
 
 size_t DecoderImpl::MessageImpl::decode(Buffer::RawSlice& dns_request, size_t offset) {
-  ASSERT(header_ == nullptr && question_ == nullptr,
-         "DNS Message decode: Header and Question are not null.Decode must be called only once");
-
   ASSERT(offset == 0, "DNS Message decode: Offset must be 0");
 
   size_t size = 0;
 
-  header_ = std::make_unique<HeaderSectionImpl>();
-  size += header_->decode(dns_request, size);
+  size += header_.decode(dns_request, size);
 
-  if (header_->qdCount() > 1) {
+  if (header_.qdCount() > 1) {
     throw EnvoyException(
-        fmt::format("DNS Request qdCount is {}. Only 1 is supported", header_->qdCount()));
+        fmt::format("DNS Request qdCount is {}. Only 1 is supported", header_.qdCount()));
   }
 
-  if (header_->anCount() > 0 || header_->arCount() > 0 || header_->nsCount() > 0) {
-    throw EnvoyException(fmt::format(
-        "DNS Request anCount is {} arCount is {} nsCount is {}. Only 1 question is supported",
-        header_->anCount(), header_->arCount(), header_->nsCount()));
-  }
-
-  QuestionRecordImpl question;
-  size += question.decode(dns_request, size);
-  question_ = std::make_shared<const QuestionRecordImpl>(question);
+  size += question_.decode(dns_request, size);
 
   return size;
 }
 
 void DecoderImpl::MessageImpl::encode(Buffer::Instance& dns_response) const {
-  ASSERT(header_ != nullptr && question_ != nullptr,
-         "DNS Message encode: Header and Question are null. Encode must be called after setting "
-         "header/question");
-
-  header_->encode(dns_response);
-  question_->encode(dns_response);
+  header_.encode(dns_response);
+  question_.encode(dns_response);
 
   if (!answers_.empty()) {
-    ASSERT(answers_.size() == header_->anCount(),
+    ASSERT(answers_.size() == header_.anCount(),
            fmt::format("Answer count {} must match header anCount {}", answers_.size(),
-                       header_->anCount()));
+                       header_.anCount()));
 
     for (auto const& answer : answers_) {
       answer->encode(dns_response);
@@ -351,9 +368,9 @@ void DecoderImpl::MessageImpl::encode(Buffer::Instance& dns_response) const {
   }
 
   if (!additional_.empty()) {
-    ASSERT(additional_.size() == header_->arCount(),
+    ASSERT(additional_.size() == header_.arCount(),
            fmt::format("Additional count {} must match header arCount {}", additional_.size(),
-                       header_->arCount()));
+                       header_.arCount()));
 
     for (auto const& additional : additional_) {
       additional->encode(dns_response);
@@ -361,62 +378,73 @@ void DecoderImpl::MessageImpl::encode(Buffer::Instance& dns_response) const {
   }
 }
 
-void DecoderImpl::MessageImpl::addARecord(Formats::ResourceRecordSection section, uint16_t ttl,
+void DecoderImpl::MessageImpl::addARecord(Formats::ResourceRecordSection section, uint32_t ttl,
                                           const Network::Address::Ipv4* address) {
   ASSERT(address != nullptr, "addARecord address is null");
-  ASSERT(question_ != nullptr, "Decode message before adding A record");
 
   switch (section) {
   case Formats::ResourceRecordSection::Answer:
-    answers_.emplace_back(std::make_unique<const ResourceRecordAImpl>(question_, ttl, address));
-    break;
-  case Formats::ResourceRecordSection::Additional:
-    additional_.emplace_back(std::make_unique<const ResourceRecordAImpl>(question_, ttl, address));
-    break;
-  }
-
-  UpdateAnswerCountInHeader(section);
-}
-
-void DecoderImpl::MessageImpl::addAAAARecord(Formats::ResourceRecordSection section, uint16_t ttl,
-                                             const Network::Address::Ipv6* address) {
-  ASSERT(address != nullptr, "addAAAARecord address is null");
-  ASSERT(question_ != nullptr, "Decode message before adding AAAA record");
-
-  switch (section) {
-  case Formats::ResourceRecordSection::Answer:
-    answers_.emplace_back(std::make_unique<const ResourceRecordAAAAImpl>(question_, ttl, address));
+    answers_.emplace_back(std::make_unique<ResourceRecordAImpl>(question_.qName(), ttl, address));
     break;
   case Formats::ResourceRecordSection::Additional:
     additional_.emplace_back(
-        std::make_unique<const ResourceRecordAAAAImpl>(question_, ttl, address));
+        std::make_unique<ResourceRecordAImpl>(question_.qName(), ttl, address));
     break;
   }
 
   UpdateAnswerCountInHeader(section);
 }
 
-void DecoderImpl::MessageImpl::addSRVRecord(uint16_t ttl, uint16_t port,
-                                            const std::string& target) {
-  ASSERT(question_ != nullptr, "Decode message before adding SRV record");
+void DecoderImpl::MessageImpl::addAAAARecord(Formats::ResourceRecordSection section, uint32_t ttl,
+                                             const Network::Address::Ipv6* address) {
+  ASSERT(address != nullptr, "addAAAARecord address is null");
 
+  switch (section) {
+  case Formats::ResourceRecordSection::Answer:
+    answers_.emplace_back(
+        std::make_unique<ResourceRecordAAAAImpl>(question_.qName(), ttl, address));
+    break;
+  case Formats::ResourceRecordSection::Additional:
+    additional_.emplace_back(
+        std::make_unique<ResourceRecordAAAAImpl>(question_.qName(), ttl, address));
+    break;
+  }
+
+  UpdateAnswerCountInHeader(section);
+}
+
+void DecoderImpl::MessageImpl::addSRVRecord(uint32_t ttl, uint16_t port,
+                                            const std::string& target) {
   answers_.emplace_back(
-      std::make_unique<const ResourceRecordSRVImpl>(question_, ttl, port, target));
+      std::make_unique<ResourceRecordSRVImpl>(question_.qName(), ttl, port, target));
 
   UpdateAnswerCountInHeader(Formats::ResourceRecordSection::Answer);
+}
+
+Formats::ResponseMessageSharedPtr DecoderImpl::MessageImpl::createResponseMessage(
+    const Formats::Message::ResponseOptions& response_options) const {
+  MessageImpl* response = new MessageImpl(*this);
+
+  // We support recursive queries for unknown domains
+  response->header_.ra(true);
+  response->header_.setResponseBit();
+  response->header_.resetAnswerCounts();
+  response->header_.rCode(response_options.response_code);
+  response->header_.aa(response_options.authoritative_bit);
+
+  Formats::ResponseMessageSharedPtr response_sharedptr(response);
+  return response_sharedptr;
 }
 
 void DecoderImpl::MessageImpl::UpdateAnswerCountInHeader(Formats::ResourceRecordSection section) {
   switch (section) {
   case Formats::ResourceRecordSection::Answer:
-    header_->setAnCount(answers_.size());
+    header_.setAnCount(answers_.size());
     break;
   case Formats::ResourceRecordSection::Additional:
-    header_->setAnCount(additional_.size());
+    header_.setAnCount(additional_.size());
     break;
   }
-
-  header_->setResponseBit();
 }
 // End MessageImpl
 
@@ -435,7 +463,7 @@ void DecoderImpl::decode(Buffer::Instance& data,
 
   MessageImpl* message = new MessageImpl(from);
   message->decode(raw_slice, 0);
-  Formats::MessageSharedPtr message_sharedptr(message);
+  Formats::RequestMessageConstSharedPtr message_sharedptr(message);
 
   callbacks_.onQuery(message_sharedptr);
 }

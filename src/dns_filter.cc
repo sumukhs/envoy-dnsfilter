@@ -15,7 +15,8 @@ DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCal
                      Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager)
     : UdpListenerReadFilter(callbacks), config_(std::move(config)), dns_server_(), decoder_() {
   DnsServer::ResolveCallback resolve_callback =
-      [this](const Formats::MessageSharedPtr& dns_response, Buffer::Instance& serialized_response) {
+      [this](const Formats::ResponseMessageSharedPtr& dns_response,
+             Buffer::Instance& serialized_response) {
         this->onResolveComplete(dns_response, serialized_response);
       };
 
@@ -49,16 +50,12 @@ void DnsFilter::doDecode(Buffer::Instance& buffer,
   }
 }
 
-void DnsFilter::onQuery(Formats::MessageSharedPtr dns_message) {
+void DnsFilter::onQuery(Formats::RequestMessageConstSharedPtr dns_message) {
   dns_server_->resolve(dns_message);
 }
 
-void DnsFilter::onResolveComplete(const Formats::MessageSharedPtr& dns_message,
+void DnsFilter::onResolveComplete(const Formats::ResponseMessageSharedPtr& dns_message,
                                   Buffer::Instance& serialized_response) {
-  ENVOY_LOG(info, "dns resolve complete status: {} for request {} type {} from {}",
-            dns_message->header().rCode(), dns_message->questionRecord().qName(),
-            dns_message->questionRecord().qType(), dns_message->from()->asString());
-
   Network::UdpSendData send_data{dns_message->from(), serialized_response};
 
   read_callbacks_->udpListener().send(send_data);

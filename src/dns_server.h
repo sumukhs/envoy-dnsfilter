@@ -23,7 +23,7 @@ public:
    * @param dns_response supplies the response message for the dns query.
    * @param serialized_response supplies the buffer with the response serialized.
    */
-  typedef std::function<void(const Formats::MessageSharedPtr& dns_response,
+  typedef std::function<void(const Formats::ResponseMessageSharedPtr& dns_response,
                              Buffer::Instance& serialized_response)>
       ResolveCallback;
 
@@ -32,7 +32,7 @@ public:
    *
    * @param dns_request to resolve.
    */
-  virtual void resolve(Formats::MessageSharedPtr dns_request) PURE;
+  virtual void resolve(const Formats::RequestMessageConstSharedPtr& dns_request) PURE;
 
 protected:
   DnsServer(const ResolveCallback& resolve_callback) : resolve_callback_(resolve_callback) {}

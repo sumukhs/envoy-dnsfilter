@@ -14,6 +14,22 @@ namespace Envoy {
 namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
+namespace {
+std::string log_dns_headers(const Formats::RequestMessageConstSharedPtr& dns_message) {
+  const Formats::Header& header = dns_message->header();
+
+  return fmt::format("qr {} rCode {} rd {} qdCount {} anCount {} nsCount {} arCount {}",
+                     static_cast<int>(header.qrCode()), header.rCode(), header.rd(),
+                     header.qdCount(), header.anCount(), header.nsCount(), header.arCount());
+}
+
+std::string log_dns_question(const Formats::RequestMessageConstSharedPtr& dns_message) {
+  const Formats::QuestionRecord& question = dns_message->questionRecord();
+
+  return fmt::format("qName {} qType {}", question.qName(), question.qType());
+}
+
+} // namespace
 
 DnsServerImpl::DnsServerImpl(const ResolveCallback& resolve_callback, const Config& config,
                              Event::Dispatcher& dispatcher,
@@ -21,9 +37,12 @@ DnsServerImpl::DnsServerImpl(const ResolveCallback& resolve_callback, const Conf
     : DnsServer(resolve_callback), config_(config), dispatcher_(dispatcher),
       cluster_manager_(cluster_manager), dns_resolver_(), response_buffer_() {}
 
-void DnsServerImpl::resolve(Formats::MessageSharedPtr dns_request) {
-  Formats::Header& header = dns_request->header();
-  if (header.rCode() == T_A || header.rCode() == T_AAAA) {
+void DnsServerImpl::resolve(const Formats::RequestMessageConstSharedPtr& dns_request) {
+  ENVOY_LOG(debug, "DNS:resolve Headers: {} Question: {}", log_dns_headers(dns_request),
+            log_dns_question(dns_request));
+
+  const Formats::QuestionRecord& question = dns_request->questionRecord();
+  if (question.qType() == T_A || question.qType() == T_AAAA) {
     resolveAorAAAA(dns_request);
   } else {
     resolveSRV(dns_request);
@@ -32,12 +51,12 @@ void DnsServerImpl::resolve(Formats::MessageSharedPtr dns_request) {
   return;
 }
 
-void DnsServerImpl::resolveAorAAAA(Formats::MessageSharedPtr dns_request) {
+void DnsServerImpl::resolveAorAAAA(const Formats::RequestMessageConstSharedPtr& dns_request) {
   const std::string& dns_name = dns_request->questionRecord().qName();
 
   // If the domain name is not known, send this request to the default dns resolver, which
   // gets the result from one of the name servers mentioned in /etc/resolv.conf
-  if (!config_.isKnownDomainName(dns_name)) {
+  if (!config_.belongsToKnownDomainName(dns_name)) {
     resolveUnknownAorAAAA(dns_request);
     return;
   }
@@ -45,13 +64,16 @@ void DnsServerImpl::resolveAorAAAA(Formats::MessageSharedPtr dns_request) {
   std::list<Network::Address::InstanceConstSharedPtr> result_list;
   uint16_t response_code = findKnownName(dns_name, result_list);
 
-  populateResponseAndInvokeCallback(dns_request, response_code,
-                                    Formats::ResourceRecordSection::Answer, true, result_list);
+  Formats::ResponseMessageSharedPtr dns_response =
+      constructResponse(dns_request, response_code, true);
+
+  addAnswersAndInvokeCallback(dns_response, Formats::ResourceRecordSection::Answer, result_list);
 
   return;
 }
 
-void DnsServerImpl::resolveUnknownAorAAAA(Formats::MessageSharedPtr dns_request) {
+void DnsServerImpl::resolveUnknownAorAAAA(
+    const Formats::RequestMessageConstSharedPtr& dns_request) {
   const std::string& dns_name = dns_request->questionRecord().qName();
   bool isIpv6 = (dns_request->questionRecord().qType() == T_AAAA);
 
@@ -67,15 +89,18 @@ void DnsServerImpl::resolveUnknownAorAAAA(Formats::MessageSharedPtr dns_request)
       [dns_request,
        this](const std::list<Network::Address::InstanceConstSharedPtr>&& results) -> void {
         if (!results.empty()) {
-          this->populateResponseAndInvokeCallback(
-              dns_request, NOERROR, Formats::ResourceRecordSection::Answer, false, results);
+          Formats::ResponseMessageSharedPtr dns_response =
+              this->constructResponse(dns_request, NOERROR, false);
+
+          this->addAnswersAndInvokeCallback(dns_response, Formats::ResourceRecordSection::Answer,
+                                            results);
           return;
         }
 
         ENVOY_LOG(debug, "DnsFilter: dns name {} mapping failed to resolve using client",
                   dns_request->questionRecord().qName());
 
-        this->populateFailedResponseAndInvokeCallback(dns_request, SERVFAIL);
+        this->constructFailedResponseAndInvokeCallback(dns_request, SERVFAIL);
       });
 
   return;
@@ -117,31 +142,23 @@ DnsServerImpl::findKnownName(const std::string& dns_name,
   return NOERROR;
 }
 
-void DnsServerImpl::resolveSRV(Formats::MessageSharedPtr& dns_request) {
-  // SRV records will have a mapping from service name to the dns name, rather than the cluster
-  // name.
+void DnsServerImpl::resolveSRV(const Formats::RequestMessageConstSharedPtr& dns_request) {
   const std::string& dns_name = dns_request->questionRecord().qName();
 
-  const auto& dns_map_it = config_.dnsMap().find(dns_name);
-  if (dns_map_it == config_.dnsMap().end()) {
-    ENVOY_LOG(debug, "DnsFilter: dns service name {} mapping does not exist. Returning NXDomain",
+  // If the domain name is not known, fail the request since we cannot serve SRV records if the
+  // domain is not well known
+  if (!config_.belongsToKnownDomainName(dns_name)) {
+    ENVOY_LOG(debug, "DnsFilter: dns service name {} not known for SRV request. Returning NXDomain",
               dns_name);
-    populateFailedResponseAndInvokeCallback(dns_request, NXDOMAIN);
+    constructFailedResponseAndInvokeCallback(dns_request, NXDOMAIN);
     return;
   }
 
   std::list<Network::Address::InstanceConstSharedPtr> result_list;
-  const std::string& target_domain = dns_map_it->second;
-  // Use the target_name to find the mapping to the IP (so that we get the port)
-  uint16_t response_code = findKnownName(target_domain, result_list);
+  uint16_t response_code = findKnownName(dns_name, result_list);
 
   if (response_code != NOERROR) {
-    ENVOY_LOG(debug,
-              "DnsFilter: dns service name {} found for request {}. However no mapping to host "
-              "exists. Returning NXDomain",
-              target_domain, dns_name);
-
-    populateFailedResponseAndInvokeCallback(dns_request, response_code);
+    constructFailedResponseAndInvokeCallback(dns_request, response_code);
     return;
   }
 
@@ -161,27 +178,27 @@ void DnsServerImpl::resolveSRV(Formats::MessageSharedPtr& dns_request) {
                        port, result->ip()->port(), dns_name));
   }
 
-  // Add the SRV record before populating response and invoking callback
-  dns_request->addSRVRecord(static_cast<uint16_t>(config_.ttl().count()), port, target_domain);
+  Formats::ResponseMessageSharedPtr dns_response =
+      constructResponse(dns_request, response_code, true);
 
-  populateResponseAndInvokeCallback(dns_request, response_code,
-                                    Formats::ResourceRecordSection::Additional, true, result_list);
+  // Add the SRV record before populating response and invoking callback
+  // Use the question name in the SRV record answer - if the user ignores the additional records
+  // added below and re-issues a query for the same question with "A" or "AAAA", he will get the
+  // list of IP's.
+  dns_response->addSRVRecord(static_cast<uint16_t>(config_.ttl().count()), port,
+                             dns_request->questionRecord().qName());
+
+  addAnswersAndInvokeCallback(dns_response, Formats::ResourceRecordSection::Additional,
+                              result_list);
 
   return;
 }
 
-void DnsServerImpl::populateResponseAndInvokeCallback(
-    Formats::MessageSharedPtr dns_response, uint16_t response_code,
-    Formats::ResourceRecordSection section, bool is_authority,
+void DnsServerImpl::addAnswersAndInvokeCallback(
+    Formats::ResponseMessageSharedPtr& dns_response, Formats::ResourceRecordSection section,
     const std::list<Network::Address::InstanceConstSharedPtr>& result_list) {
-  dns_response->header().rCode(response_code);
-  if (response_code != NOERROR) {
-    serializeAndInvokeCallback(dns_response);
-    return;
-  }
 
-  uint16_t ttl = static_cast<uint16_t>(config_.ttl().count());
-  dns_response->header().aa(is_authority);
+  uint32_t ttl = static_cast<uint32_t>(config_.ttl().count());
   for (const auto& address : result_list) {
     ASSERT(address->ip() != nullptr, "DNServer: Resolved address must be an IP");
 
@@ -198,17 +215,34 @@ void DnsServerImpl::populateResponseAndInvokeCallback(
   serializeAndInvokeCallback(dns_response);
 }
 
-void DnsServerImpl::populateFailedResponseAndInvokeCallback(Formats::MessageSharedPtr dns_response,
-                                                            uint16_t response_code) {
-  dns_response->header().rCode(response_code);
+void DnsServerImpl::constructFailedResponseAndInvokeCallback(
+    const Formats::RequestMessageConstSharedPtr& dns_request, uint16_t response_code) {
+
+  Formats::ResponseMessageSharedPtr dns_response =
+      constructResponse(dns_request, response_code, false);
+
   serializeAndInvokeCallback(dns_response);
 }
 
-void DnsServerImpl::serializeAndInvokeCallback(Formats::MessageSharedPtr dns_response) {
+Formats::ResponseMessageSharedPtr
+DnsServerImpl::constructResponse(const Formats::RequestMessageConstSharedPtr& dns_request,
+                                 uint16_t response_code, bool is_authority) {
+  Formats::Message::ResponseOptions response_options{response_code, is_authority};
+  Formats::ResponseMessageSharedPtr response_message =
+      dns_request->createResponseMessage(response_options);
+
+  return response_message;
+}
+
+void DnsServerImpl::serializeAndInvokeCallback(Formats::ResponseMessageSharedPtr& dns_response) {
   // drain out all the previous contents
   response_buffer_.drain(response_buffer_.length());
 
   dns_response->encode(response_buffer_);
+
+  ENVOY_LOG(debug, "DNS:response Headers: {} Question: {} TotalBytes {}",
+            log_dns_headers(dns_response), log_dns_question(dns_response),
+            response_buffer_.length());
 
   resolve_callback_(dns_response, response_buffer_);
 }

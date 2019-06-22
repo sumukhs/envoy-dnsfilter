@@ -41,13 +41,12 @@ private:
   class HeaderSectionImpl : public Formats::Header, public Formats::Encode, public Decode {
   public:
     HeaderSectionImpl();
+    HeaderSectionImpl(const HeaderSectionImpl& request_header);
 
     // Formats::HeaderSection
     Formats::MessageType qrCode() const override;
     uint16_t rCode() const override;
-    void rCode(uint16_t response_code) override;
-    void aa(bool value) override;
-    void ra(bool value) override;
+    bool rd() const override;
     uint16_t qdCount() const override;
     uint16_t anCount() const override;
     uint16_t nsCount() const override;
@@ -60,7 +59,11 @@ private:
     void encode(Buffer::Instance& dns_response) const override;
 
     void setResponseBit();
+    void resetAnswerCounts();
     void setAnCount(uint16_t count);
+    void rCode(uint16_t response_code);
+    void aa(bool value);
+    void ra(bool value);
 
   private:
     void ThrowIfNotSupported();
@@ -71,6 +74,7 @@ private:
   class QuestionRecordImpl : public Formats::QuestionRecord, public Formats::Encode, public Decode {
   public:
     QuestionRecordImpl();
+    QuestionRecordImpl(const QuestionRecordImpl& request_question);
 
     // Formats::QuestionRecord
     const std::string& qName() const override;
@@ -85,37 +89,33 @@ private:
   private:
     void ThrowIfNotSupported();
 
-    static unsigned char QUESTION_FIXED_SIZE[QFIXEDSZ];
     std::string q_name_;
     uint16_t q_type_;
     uint16_t q_class_;
   };
-  typedef std::shared_ptr<const QuestionRecordImpl> QuestionRecordImplConstSharedPtr;
 
   class ResourceRecordImpl : public Formats::ResourceRecord, public Formats::Encode {
   public:
     // Formats::ResourceRecord
     const std::string& name() const override;
     uint16_t type() const override;
-    uint16_t ttl() const override;
+    uint32_t ttl() const override;
 
     // Formats::Encode
     virtual void encode(Buffer::Instance& dns_response) const override;
 
   protected:
-    ResourceRecordImpl(const QuestionRecordImplConstSharedPtr& question, uint16_t ttl);
-    static unsigned char TWO_BYTES[2];
+    ResourceRecordImpl(const std::string& name, uint16_t type, uint32_t ttl);
 
   private:
-    const QuestionRecordImplConstSharedPtr question_;
-    const uint16_t ttl_;
+    const std::string name_;
+    const uint16_t type_;
+    const uint32_t ttl_;
   };
-
-  typedef std::unique_ptr<const ResourceRecordImpl> ResourceRecordImplConstPtr;
 
   class ResourceRecordAImpl : public ResourceRecordImpl {
   public:
-    ResourceRecordAImpl(const QuestionRecordImplConstSharedPtr& question, uint16_t ttl,
+    ResourceRecordAImpl(const std::string& name, uint32_t ttl,
                         const Network::Address::Ipv4* address);
 
     // Formats::ResourceRecord
@@ -131,7 +131,7 @@ private:
 
   class ResourceRecordAAAAImpl : public ResourceRecordImpl {
   public:
-    ResourceRecordAAAAImpl(const QuestionRecordImplConstSharedPtr& question, uint16_t ttl,
+    ResourceRecordAAAAImpl(const std::string& name, uint32_t ttl,
                            const Network::Address::Ipv6* address);
 
     // Formats::ResourceRecord
@@ -147,8 +147,8 @@ private:
 
   class ResourceRecordSRVImpl : public ResourceRecordImpl {
   public:
-    ResourceRecordSRVImpl(const QuestionRecordImplConstSharedPtr& question, uint16_t ttl,
-                          uint16_t port, const std::string& host);
+    ResourceRecordSRVImpl(const std::string& name, uint32_t ttl, uint16_t port,
+                          const std::string& host);
 
     // Formats::ResourceRecord
     uint16_t rdLength() const override;
@@ -168,19 +168,24 @@ private:
     const void* linearized_pointer_to_encoded_r_data_;
   };
 
+  typedef std::unique_ptr<ResourceRecordImpl> ResourceRecordImplPtr;
+
   class MessageImpl : public Formats::Message, public Decode {
   public:
     MessageImpl(const Network::Address::InstanceConstSharedPtr& from);
+    MessageImpl(const MessageImpl& request_message);
 
     // Formats::Message
     const Network::Address::InstanceConstSharedPtr& from() const override;
-    Formats::Header& header() override;
+    const Formats::Header& header() const override;
     const Formats::QuestionRecord& questionRecord() const override;
-    void addARecord(Formats::ResourceRecordSection section, uint16_t ttl,
+    void addARecord(Formats::ResourceRecordSection section, uint32_t ttl,
                     const Network::Address::Ipv4* address) override;
-    void addAAAARecord(Formats::ResourceRecordSection section, uint16_t ttl,
+    void addAAAARecord(Formats::ResourceRecordSection section, uint32_t ttl,
                        const Network::Address::Ipv6* address) override;
-    void addSRVRecord(uint16_t ttl, uint16_t port, const std::string& host) override;
+    void addSRVRecord(uint32_t ttl, uint16_t port, const std::string& host) override;
+    Formats::ResponseMessageSharedPtr
+    createResponseMessage(const Formats::Message::ResponseOptions& response_options) const override;
 
     // Decode
     size_t decode(Buffer::RawSlice& dns_request, size_t offset) override;
@@ -192,10 +197,10 @@ private:
     void UpdateAnswerCountInHeader(Formats::ResourceRecordSection section);
 
     const Network::Address::InstanceConstSharedPtr from_;
-    std::unique_ptr<HeaderSectionImpl> header_;
-    QuestionRecordImplConstSharedPtr question_;
-    std::vector<ResourceRecordImplConstPtr> answers_;
-    std::vector<ResourceRecordImplConstPtr> additional_;
+    HeaderSectionImpl header_;
+    QuestionRecordImpl question_;
+    std::vector<ResourceRecordImplPtr> answers_;
+    std::vector<ResourceRecordImplPtr> additional_;
   };
 
   DecoderCallbacks& callbacks_;

@@ -32,27 +32,36 @@ public:
                 Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager);
 
   // DnsServer
-  void resolve(Formats::MessageSharedPtr dns_request) override;
+  void resolve(const Formats::RequestMessageConstSharedPtr& dns_request) override;
 
 private:
-  void resolveAorAAAA(Formats::MessageSharedPtr dns_request);
+  void resolveAorAAAA(const Formats::RequestMessageConstSharedPtr& dns_request);
 
-  void resolveSRV(Formats::MessageSharedPtr& dns_request);
+  void resolveSRV(const Formats::RequestMessageConstSharedPtr& dns_request);
 
-  void resolveUnknownAorAAAA(Formats::MessageSharedPtr dns_request);
+  void resolveUnknownAorAAAA(const Formats::RequestMessageConstSharedPtr& dns_request);
 
   uint16_t findKnownName(const std::string& dns_name,
                          std::list<Network::Address::InstanceConstSharedPtr>& result_list);
 
-  void populateFailedResponseAndInvokeCallback(Formats::MessageSharedPtr dns_response,
-                                               uint16_t response_code);
+  void
+  constructFailedResponseAndInvokeCallback(const Formats::RequestMessageConstSharedPtr& dns_request,
+                                           uint16_t response_code);
 
-  void populateResponseAndInvokeCallback(
-      Formats::MessageSharedPtr dns_response, uint16_t response_code,
+  void constructResponseAndInvokeCallback(
+      const Formats::RequestMessageConstSharedPtr& dns_request, uint16_t response_code,
       Formats::ResourceRecordSection section, bool isAuthority,
       const std::list<Network::Address::InstanceConstSharedPtr>& result_list);
 
-  void serializeAndInvokeCallback(Formats::MessageSharedPtr dns_response);
+  Formats::ResponseMessageSharedPtr
+  constructResponse(const Formats::RequestMessageConstSharedPtr& dns_request,
+                    uint16_t response_code, bool is_authority);
+
+  void addAnswersAndInvokeCallback(
+      Formats::ResponseMessageSharedPtr& dns_response, Formats::ResourceRecordSection section,
+      const std::list<Network::Address::InstanceConstSharedPtr>& result_list);
+
+  void serializeAndInvokeCallback(Formats::ResponseMessageSharedPtr& dns_response);
 
   const Config& config_;
   Event::Dispatcher& dispatcher_;

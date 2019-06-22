@@ -16,18 +16,12 @@ namespace Dns {
 namespace Formats {
 
 class Header;
-typedef std::unique_ptr<Header> HeaderPtr;
-
-// A const pointer is created since the question cannot change once constructed
 class QuestionRecord;
-typedef std::shared_ptr<const QuestionRecord> QuestionRecordConstSharedPtr;
-
-// A const pointer is created since the resource record cannot change once constructed
-class ResourceRecord;
-typedef std::unique_ptr<const ResourceRecord> ResourceRecordConstPtr;
-
 class Message;
-typedef std::shared_ptr<Message> MessageSharedPtr;
+
+// A const pointer is created since the request cannot change once constructed
+typedef std::shared_ptr<const Message> RequestMessageConstSharedPtr;
+typedef std::shared_ptr<Message> ResponseMessageSharedPtr;
 
 enum class MessageType { Query, Response };
 
@@ -63,6 +57,11 @@ public:
 */
 class Message : public Encode {
 public:
+  struct ResponseOptions {
+    uint16_t response_code;
+    bool authoritative_bit;
+  };
+
   virtual ~Message() = default;
 
   virtual const Network::Address::InstanceConstSharedPtr& from() const PURE;
@@ -70,7 +69,7 @@ public:
   /**
    * The header section of the message
    */
-  virtual Header& header() PURE;
+  virtual const Header& header() const PURE;
 
   /**
    * The question record of the message
@@ -80,19 +79,27 @@ public:
   /**
    * Add the A resource record for the address specified.
    */
-  virtual void addARecord(ResourceRecordSection section, uint16_t ttl,
+  virtual void addARecord(ResourceRecordSection section, uint32_t ttl,
                           const Network::Address::Ipv4* address) PURE;
 
   /**
    * Add the AAAA resource record for the address specified.
    */
-  virtual void addAAAARecord(ResourceRecordSection section, uint16_t ttl,
+  virtual void addAAAARecord(ResourceRecordSection section, uint32_t ttl,
                              const Network::Address::Ipv6* address) PURE;
 
   /**
    * Add the SRV resource record for the address specified.
    */
-  virtual void addSRVRecord(uint16_t ttl, uint16_t port, const std::string& host) PURE;
+  virtual void addSRVRecord(uint32_t ttl, uint16_t port, const std::string& host) PURE;
+
+  /**
+   * Constructs the response message by populating the header
+   * and question fields to the same values in the current message. The QR bit is set to 1
+   * to indicate a response
+   */
+  virtual ResponseMessageSharedPtr
+  createResponseMessage(const ResponseOptions& response_options) const PURE;
 };
 
 /**
@@ -128,19 +135,9 @@ public:
   virtual uint16_t rCode() const PURE;
 
   /**
-   * Sets the response code
+   * Gets the RD bit (Recursion Desired)
    */
-  virtual void rCode(uint16_t response_code) PURE;
-
-  /**
-   * Sets the AA bit (Authoritative Answer)
-   */
-  virtual void aa(bool value) PURE;
-
-  /**
-   * Sets the RA bit (Recursion Available)
-   */
-  virtual void ra(bool value) PURE;
+  virtual bool rd() const PURE;
 
   /**
    * Gets the question count
@@ -229,7 +226,7 @@ public:
    */
   virtual uint16_t type() const PURE;
 
-  virtual uint16_t ttl() const PURE;
+  virtual uint32_t ttl() const PURE;
 
   virtual uint16_t rdLength() const PURE;
 
@@ -245,7 +242,7 @@ class DecoderCallbacks {
 public:
   virtual ~DecoderCallbacks() = default;
 
-  virtual void onQuery(Formats::MessageSharedPtr dns_message) PURE;
+  virtual void onQuery(Formats::RequestMessageConstSharedPtr dns_message) PURE;
 };
 
 /**

@@ -23,7 +23,7 @@ public:
   virtual std::chrono::milliseconds recursiveQueryTimeout() const PURE;
 
   // Server Config
-  virtual bool isKnownDomainName(const std::string& domain_name) const PURE;
+  virtual bool belongsToKnownDomainName(const std::string& input) const PURE;
   virtual std::chrono::milliseconds ttl() const PURE;
   virtual const std::unordered_map<std::string, std::string>& dnsMap() const PURE;
 };
@@ -37,11 +37,13 @@ public:
   std::chrono::milliseconds recursiveQueryTimeout() const override;
 
   // Server Config
-  bool isKnownDomainName(const std::string& domain_name) const override;
+  bool belongsToKnownDomainName(const std::string& input) const override;
   std::chrono::milliseconds ttl() const override;
   const std::unordered_map<std::string, std::string>& dnsMap() const override;
 
 private:
+  static bool isSuffixString(const std::string& input, const std::string& suffix);
+
   std::chrono::milliseconds recursive_query_timeout_;
 
   std::unordered_set<std::string> known_domain_names_;
