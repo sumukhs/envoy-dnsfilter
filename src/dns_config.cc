@@ -7,13 +7,16 @@ namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-ConfigImpl::ConfigImpl(const envoy::config::filter::listener::udp::DnsConfig& config)
-    : recursive_query_timeout_(std::chrono::milliseconds(
-          PROTOBUF_GET_MS_OR_DEFAULT(config.client_settings(), recursive_query_timeout, 5000))),
-      known_domain_names_(), ttl_(std::chrono::milliseconds(
-                                 PROTOBUF_GET_MS_OR_DEFAULT(config.server_settings(), ttl, 5000))),
-      dns_map_() {
+#define PROTOBUF_GET_SECONDS_OR_DEFAULT(message, field_name, default_value)                        \
+  ((message).has_##field_name() ? DurationUtil::durationToSeconds((message).field_name())          \
+                                : (default_value))
 
+ConfigImpl::ConfigImpl(const envoy::config::filter::listener::udp::DnsConfig& config)
+    : recursive_query_timeout_(std::chrono::seconds(
+          PROTOBUF_GET_SECONDS_OR_DEFAULT(config.client_settings(), recursive_query_timeout, 5))),
+      known_domain_names_(),
+      ttl_(std::chrono::seconds(PROTOBUF_GET_SECONDS_OR_DEFAULT(config.server_settings(), ttl, 5))),
+      dns_map_() {
   // This must have been validated in the proto validation
   ASSERT(!config.server_settings().known_domainname_suffixes().empty());
 
@@ -37,9 +40,7 @@ ConfigImpl::ConfigImpl(const envoy::config::filter::listener::udp::DnsConfig& co
   }
 }
 
-std::chrono::milliseconds ConfigImpl::recursiveQueryTimeout() const {
-  return recursive_query_timeout_;
-}
+std::chrono::seconds ConfigImpl::recursiveQueryTimeout() const { return recursive_query_timeout_; }
 
 bool ConfigImpl::belongsToKnownDomainName(const std::string& input) const {
   // Checks if the domain_name is a substring of 1 of the known domain names
@@ -52,7 +53,7 @@ bool ConfigImpl::belongsToKnownDomainName(const std::string& input) const {
   return false;
 }
 
-std::chrono::milliseconds ConfigImpl::ttl() const { return ttl_; }
+std::chrono::seconds ConfigImpl::ttl() const { return ttl_; }
 
 const std::unordered_map<std::string, std::string>& ConfigImpl::dnsMap() const { return dns_map_; }
 

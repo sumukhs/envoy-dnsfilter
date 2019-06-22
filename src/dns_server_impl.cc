@@ -162,30 +162,30 @@ void DnsServerImpl::resolveSRV(const Formats::RequestMessageConstSharedPtr& dns_
     return;
   }
 
-  // TODO(sumukhs): Can this verification be skipped in retail builds? It is a sanity check that
-  // dynamic port numbers are not assigned for different hosts in the result list.
-  //
-  // Without this guarantee (static ports), there is a possibility that we return port 'X' for SRV
-  // request with target_name "a.b.c", but when a request is made for a.b.c, we return the IP of a
-  // port that is not listening on port 'X' if there are multiple hosts in a service.
-  //
-  uint16_t port = static_cast<uint16_t>(result_list.front()->ip()->port());
-  for (const auto& result : result_list) {
-    ASSERT(port == static_cast<uint16_t>(result->ip()->port()),
-           fmt::format("Port mapping must be static while using dns filter for SRV requests. Port "
-                       "{} and {} do "
-                       "not match for dns_name {}",
-                       port, result->ip()->port(), dns_name));
-  }
-
   Formats::ResponseMessageSharedPtr dns_response =
       constructResponse(dns_request, response_code, true);
+
+  uint16_t first_port = result_list.front()->ip()->port();
+  for (const auto& result : result_list) {
+    uint16_t current_port = result->ip()->port();
+    // Without this guarantee (static ports), there is a possibility that we return port 'X' for SRV
+    // request with target_name "a.b.c", but when a request is made for a.b.c, we return the IP of a
+    // port that is not listening on port 'X' if there are multiple hosts in a service.
+    if (current_port != first_port) {
+      ENVOY_LOG(debug,
+                "DNS Server: Error while adding SRV record for qName {} port {} does not match {}",
+                dns_request->questionRecord().qName(), first_port, current_port);
+
+      constructFailedResponseAndInvokeCallback(dns_request, SERVFAIL);
+      return;
+    }
+  }
 
   // Add the SRV record before populating response and invoking callback
   // Use the question name in the SRV record answer - if the user ignores the additional records
   // added below and re-issues a query for the same question with "A" or "AAAA", he will get the
   // list of IP's.
-  dns_response->addSRVRecord(static_cast<uint16_t>(config_.ttl().count()), port,
+  dns_response->addSRVRecord(static_cast<uint16_t>(config_.ttl().count()), first_port,
                              dns_request->questionRecord().qName());
 
   addAnswersAndInvokeCallback(dns_response, Formats::ResourceRecordSection::Additional,
@@ -201,6 +201,9 @@ void DnsServerImpl::addAnswersAndInvokeCallback(
   uint32_t ttl = static_cast<uint32_t>(config_.ttl().count());
   for (const auto& address : result_list) {
     ASSERT(address->ip() != nullptr, "DNServer: Resolved address must be an IP");
+
+    ENVOY_LOG(debug, "DNS Server: Adding A/AAAA record section {} address {}",
+              static_cast<int>(section), address->asString());
 
     switch (address->ip()->version()) {
     case Network::Address::IpVersion::v4:

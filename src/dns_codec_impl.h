@@ -61,6 +61,7 @@ private:
     void setResponseBit();
     void resetAnswerCounts();
     void setAnCount(uint16_t count);
+    void setArCount(uint16_t count);
     void rCode(uint16_t response_code);
     void aa(bool value);
     void ra(bool value);

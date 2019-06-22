@@ -105,6 +105,10 @@ void DecoderImpl::HeaderSectionImpl::setAnCount(uint16_t count) {
   DNS_HEADER_SET_ANCOUNT(&header_[0], count);
 }
 
+void DecoderImpl::HeaderSectionImpl::setArCount(uint16_t count) {
+  DNS_HEADER_SET_ARCOUNT(&header_[0], count);
+}
+
 size_t DecoderImpl::HeaderSectionImpl::decode(Buffer::RawSlice& request, size_t offset) {
   ASSERT(offset == 0,
          fmt::format("Offset is {}. Expected to be 0 while decoding DNS header", offset));
@@ -415,6 +419,8 @@ void DecoderImpl::MessageImpl::addAAAARecord(Formats::ResourceRecordSection sect
 
 void DecoderImpl::MessageImpl::addSRVRecord(uint32_t ttl, uint16_t port,
                                             const std::string& target) {
+  ENVOY_LOG(debug, "DNS Server: Adding SRV record qName {} port {}", question_.qName(), port);
+
   answers_.emplace_back(
       std::make_unique<ResourceRecordSRVImpl>(question_.qName(), ttl, port, target));
 
@@ -442,7 +448,7 @@ void DecoderImpl::MessageImpl::UpdateAnswerCountInHeader(Formats::ResourceRecord
     header_.setAnCount(answers_.size());
     break;
   case Formats::ResourceRecordSection::Additional:
-    header_.setAnCount(additional_.size());
+    header_.setArCount(additional_.size());
     break;
   }
 }

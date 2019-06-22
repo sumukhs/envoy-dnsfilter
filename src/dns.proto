@@ -24,8 +24,8 @@ message DnsConfig {
 // Client specific settings of the DNS filter where the filter is acting as a dns client
 // issuing dns requests to other name servers
 message ClientSettings {
-  // The timeout in milliseconds for recursive DNS queries issued to name_servers
-  // The default value if not specified is 5000. (5 seconds)
+  // The timeout in seconds for recursive DNS queries issued to name_servers
+  // The default value if not specified is 5 seconds
   google.protobuf.Duration recursive_query_timeout = 1;
 }
 
@@ -42,8 +42,8 @@ message ServerSettings {
   repeated string known_domainname_suffixes = 1
   [(validate.rules).repeated = {min_items:1}];
 
-  // The TTL in milliseconds that is set on DNS query responses
-  // The default value if not specified is 5000. (5 seconds)
+  // The TTL in seconds that is set on DNS query responses
+  // The default value if not specified is 5 seconds
   google.protobuf.Duration ttl = 2;
 
   // Provides the mapping from a dns name to a cluster name for the dns filter to 
