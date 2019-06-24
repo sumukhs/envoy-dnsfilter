@@ -5,6 +5,7 @@
 
 #include "envoy/network/filter.h"
 #include "envoy/network/listener.h"
+#include "envoy/network/dns.h"
 
 #include "common/common/logger.h"
 
@@ -35,7 +36,7 @@ class DnsFilter : public Network::UdpListenerReadFilter,
                   Logger::Loggable<Logger::Id::filter> {
 public:
   DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
-            Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager);
+            Upstream::ClusterManager& cluster_manager);
 
   virtual DecoderPtr createDecoder(DecoderCallbacks& callbacks) PURE;
 

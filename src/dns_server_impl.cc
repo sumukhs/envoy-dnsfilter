@@ -1,7 +1,6 @@
 #include "common/network/dns_impl.h"
 
 #include "common/common/assert.h"
-#include "envoy/event/dispatcher.h"
 #include "envoy/upstream/cluster_manager.h"
 #include "envoy/upstream/thread_local_cluster.h"
 #include "envoy/upstream/upstream.h"
@@ -34,8 +33,9 @@ std::string log_dns_question(const Formats::RequestMessageConstSharedPtr& dns_me
 DnsServerImpl::DnsServerImpl(const ResolveCallback& resolve_callback, const Config& config,
                              Event::Dispatcher& dispatcher,
                              Upstream::ClusterManager& cluster_manager)
-    : DnsServer(resolve_callback), config_(config), dispatcher_(dispatcher),
-      cluster_manager_(cluster_manager), dns_resolver_(), response_buffer_() {}
+    : DnsServer(resolve_callback), config_(config),
+      external_resolver_(dispatcher.createDnsResolver({})), dispatcher_(dispatcher),
+      cluster_manager_(cluster_manager), response_buffer_() {}
 
 void DnsServerImpl::resolve(const Formats::RequestMessageConstSharedPtr& dns_request) {
   ENVOY_LOG(debug, "DNS:resolve Headers: {} Question: {}", log_dns_headers(dns_request),
@@ -54,10 +54,13 @@ void DnsServerImpl::resolve(const Formats::RequestMessageConstSharedPtr& dns_req
 void DnsServerImpl::resolveAorAAAA(const Formats::RequestMessageConstSharedPtr& dns_request) {
   const std::string& dns_name = dns_request->questionRecord().qName();
 
-  // If the domain name is not known, send this request to the default dns resolver, which
+  // If the domain name is not known, send this request to the external dns resolver, which
   // gets the result from one of the name servers mentioned in /etc/resolv.conf
   if (!config_.belongsToKnownDomainName(dns_name)) {
-    resolveUnknownAorAAAA(dns_request);
+    // The resolver method must be invoked on the dispatcher thread. So post this work item on
+    // the dispatcher queue
+    // dispatcher_.post([dns_request, this] { this->resolveUnknownAorAAAA(dns_request); });
+    this->resolveUnknownAorAAAA(dns_request);
     return;
   }
 
@@ -77,14 +80,10 @@ void DnsServerImpl::resolveUnknownAorAAAA(
   const std::string& dns_name = dns_request->questionRecord().qName();
   bool isIpv6 = (dns_request->questionRecord().qType() == T_AAAA);
 
-  if (dns_resolver_ == nullptr) {
-    dns_resolver_ = dispatcher_.createDnsResolver({});
-  }
-
   ENVOY_LOG(debug, "DnsFilter: Unknown domain name {}. Sending query via client", dns_name);
 
   // TODO(sumukhs): Cancel returned query after timeout
-  dns_resolver_->resolve(
+  external_resolver_->resolve(
       dns_name, isIpv6 ? Network::DnsLookupFamily::V6Only : Network::DnsLookupFamily::V4Only,
       [dns_request,
        this](const std::list<Network::Address::InstanceConstSharedPtr>&& results) -> void {
@@ -185,6 +184,7 @@ void DnsServerImpl::resolveSRV(const Formats::RequestMessageConstSharedPtr& dns_
   // Use the question name in the SRV record answer - if the user ignores the additional records
   // added below and re-issues a query for the same question with "A" or "AAAA", he will get the
   // list of IP's.
+  // TODO(sumukhs): Also consider how to pass in priority and weight for srv records
   dns_response->addSRVRecord(static_cast<uint16_t>(config_.ttl().count()), first_port,
                              dns_request->questionRecord().qName());
 
@@ -238,16 +238,15 @@ DnsServerImpl::constructResponse(const Formats::RequestMessageConstSharedPtr& dn
 }
 
 void DnsServerImpl::serializeAndInvokeCallback(Formats::ResponseMessageSharedPtr& dns_response) {
-  // drain out all the previous contents
-  response_buffer_.drain(response_buffer_.length());
+  Buffer::OwnedImpl response_buffer;
+  dns_response->encode(response_buffer);
 
-  dns_response->encode(response_buffer_);
-
+  // TODO(sumukhs): Add EDNS(0) record if the buffer is longer than 512 bytes
   ENVOY_LOG(debug, "DNS:response Headers: {} Question: {} TotalBytes {}",
             log_dns_headers(dns_response), log_dns_question(dns_response),
-            response_buffer_.length());
+            response_buffer.length());
 
-  resolve_callback_(dns_response, response_buffer_);
+  resolve_callback_(dns_response, response_buffer);
 }
 
 } // namespace Dns

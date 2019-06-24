@@ -4,6 +4,7 @@
 #include "src/dns_server_impl.h"
 #include "src/dns_codec_impl.h"
 
+#include "envoy/event/dispatcher.h"
 #include "common/common/assert.h"
 
 namespace Envoy {
@@ -12,16 +13,17 @@ namespace ListenerFilters {
 namespace Dns {
 
 DnsFilter::DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
-                     Event::Dispatcher& dispatcher, Upstream::ClusterManager& cluster_manager)
+                     Upstream::ClusterManager& cluster_manager)
     : UdpListenerReadFilter(callbacks), config_(std::move(config)), dns_server_(), decoder_() {
+
   DnsServer::ResolveCallback resolve_callback =
       [this](const Formats::ResponseMessageSharedPtr& dns_response,
              Buffer::Instance& serialized_response) {
         this->onResolveComplete(dns_response, serialized_response);
       };
 
-  dns_server_ =
-      std::make_unique<DnsServerImpl>(resolve_callback, *config_, dispatcher, cluster_manager);
+  dns_server_ = std::make_unique<DnsServerImpl>(
+      resolve_callback, *config_, callbacks.udpListener().dispatcher(), cluster_manager);
 }
 
 void DnsFilter::onData(Network::UdpRecvData& data) {

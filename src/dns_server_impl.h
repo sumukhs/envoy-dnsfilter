@@ -64,9 +64,9 @@ private:
   void serializeAndInvokeCallback(Formats::ResponseMessageSharedPtr& dns_response);
 
   const Config& config_;
+  const Network::DnsResolverSharedPtr external_resolver_;
   Event::Dispatcher& dispatcher_;
   Upstream::ClusterManager& cluster_manager_;
-  Network::DnsResolverSharedPtr dns_resolver_;
   Buffer::OwnedImpl response_buffer_;
 };
 

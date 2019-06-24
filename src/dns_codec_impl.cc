@@ -312,7 +312,7 @@ void DecoderImpl::ResourceRecordSRVImpl::encodeRData() {
   encodeDomainString(host_buffer, host_);
   rdLength_ = 6 + host_buffer.length();
 
-  // TODO(sumukhs) - Take in the priority and weight
+  // Priority and Weight is set to 0
   add2DnsBytes(encoded_r_data_, 0);
   add2DnsBytes(encoded_r_data_, 0);
   add2DnsBytes(encoded_r_data_, port_);
