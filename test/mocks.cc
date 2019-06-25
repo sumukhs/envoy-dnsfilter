@@ -19,6 +19,26 @@ MockConfig::MockConfig() {}
 
 MockConfig::~MockConfig() {}
 
+namespace Formats {
+
+MockHeader::MockHeader() {}
+
+MockHeader::~MockHeader() {}
+
+MockQuestionRecord::MockQuestionRecord() {}
+
+MockQuestionRecord::~MockQuestionRecord() {}
+
+MockMessage::MockMessage(Network::Address::InstanceConstSharedPtr& from)
+    : header_(), question_(), from_(from) {
+  ON_CALL(*this, from()).WillByDefault(ReturnRef(from_));
+  ON_CALL(*this, header()).WillByDefault(ReturnRef(header_));
+  ON_CALL(*this, questionRecord()).WillByDefault(ReturnRef(question_));
+}
+
+MockMessage::~MockMessage() {}
+} // namespace Formats
+
 } // namespace Dns
 } // namespace ListenerFilters
 } // namespace Extensions

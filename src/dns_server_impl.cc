@@ -57,9 +57,6 @@ void DnsServerImpl::resolveAorAAAA(const Formats::RequestMessageConstSharedPtr& 
   // If the domain name is not known, send this request to the external dns resolver, which
   // gets the result from one of the name servers mentioned in /etc/resolv.conf
   if (!config_.belongsToKnownDomainName(dns_name)) {
-    // The resolver method must be invoked on the dispatcher thread. So post this work item on
-    // the dispatcher queue
-    // dispatcher_.post([dns_request, this] { this->resolveUnknownAorAAAA(dns_request); });
     this->resolveUnknownAorAAAA(dns_request);
     return;
   }
@@ -91,6 +88,8 @@ void DnsServerImpl::resolveUnknownAorAAAA(
           Formats::ResponseMessageSharedPtr dns_response =
               this->constructResponse(dns_request, NOERROR, false);
 
+          // TODO(sumukhs): The TTL for these responses are not known and need to be extracted from
+          // the c-ares response. Currently, the resolve API does not provide this functionality.
           this->addAnswersAndInvokeCallback(dns_response, Formats::ResourceRecordSection::Answer,
                                             results);
           return;
@@ -124,14 +123,17 @@ DnsServerImpl::findKnownName(const std::string& dns_name,
     return SERVFAIL;
   }
 
-  ENVOY_LOG(debug, "DnsFilter: Found {} hostSets for cluster {} with dns name {}",
-            cluster->prioritySet().hostSetsPerPriority().size(), cluster_name, dns_name);
+  const std::vector<Upstream::HostSetPtr>& hostSets = cluster->prioritySet().hostSetsPerPriority();
 
-  for (uint32_t i = 0; i < cluster->prioritySet().hostSetsPerPriority().size(); i++) {
-    for (auto& host : cluster->prioritySet().hostSetsPerPriority()[i]->hosts()) {
-      ENVOY_LOG(debug, "DnsFilter: Endpoint {} added for dns name {}", host->address()->asString(),
+  ENVOY_LOG(debug, "DnsFilter: Found {} hostSets for cluster {} with dns name {}", hostSets.size(),
+            cluster_name, dns_name);
+
+  for (uint32_t i = 0; i < hostSets.size(); i++) {
+    for (auto& host : hostSets[i]->hosts()) {
+      const Network::Address::InstanceConstSharedPtr& address = host->address();
+      ENVOY_LOG(debug, "DnsFilter: Endpoint {} added for dns name {}", address->asString(),
                 dns_name);
-      result_list.emplace_back(host->address());
+      result_list.emplace_back(address);
     }
   }
 
