@@ -10,11 +10,10 @@ load(
 envoy_cc_test(
     name = "dns_integration_test",
     srcs = ["dns_integration_test.cc"],
-    data = ["dns_test_filter.yaml"],
     repository = "@envoy",
     deps = [
         "//src:dns_config_factory",
-        "//src:dns_filter",
+        "@envoy//source/common/network:dns_lib",
         "@envoy//test/integration:integration_lib",
     ],
 )

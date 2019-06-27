@@ -207,6 +207,9 @@ void DnsServerImpl::addAnswersAndInvokeCallback(
     ENVOY_LOG(debug, "DNS Server: Adding A/AAAA record section {} address {}",
               static_cast<int>(section), address->asString());
 
+    // TODO(sumukhs): If the question is A, should return only AAAA. Similarly, if the question is
+    // AAAA, return only A. People return SOA when there is no response to be sent. Investigate if
+    // that is needed.
     switch (address->ip()->version()) {
     case Network::Address::IpVersion::v4:
       dns_response->addARecord(section, ttl, address->ip()->ipv4());
