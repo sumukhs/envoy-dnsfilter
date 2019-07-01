@@ -31,7 +31,21 @@ namespace Dns {
 
 class ServerImplTest : public ::testing::Test {
 public:
-  void setup(uint16_t qType, const std::string qName) {
+  bool isDnsMessageSupported() const {
+    bool question_type_supported =
+        question_type_ == T_A || question_type_ == T_AAAA || question_type_ == T_SRV;
+
+    bool question_class_supported = question_class_ == C_IN;
+
+    bool header_opcode_supported = opCode_ == 0;
+
+    bool header_qcount_supported = question_count_ <= 1;
+
+    return question_type_supported && question_class_supported && header_opcode_supported &&
+           header_qcount_supported;
+  }
+
+  void setup(const std::string qName) {
     dns_resolver_ = std::make_shared<Network::MockDnsResolver>();
     Network::Address::InstanceConstSharedPtr from =
         std::make_shared<Network::Address::Ipv4Instance>("1.1.1.0", 0);
@@ -42,18 +56,18 @@ public:
 
     EXPECT_CALL(dns_request_->header_, qrCode())
         .WillRepeatedly(Return(Formats::MessageType::Query));
-    EXPECT_CALL(dns_request_->header_, opCode()).WillRepeatedly(Return(0));
-    EXPECT_CALL(dns_request_->header_, qdCount()).WillRepeatedly(Return(1));
+    EXPECT_CALL(dns_request_->header_, opCode()).WillRepeatedly(Return(opCode_));
+    EXPECT_CALL(dns_request_->header_, qdCount()).WillRepeatedly(Return(question_count_));
     EXPECT_CALL(dns_request_->question_, qName()).WillRepeatedly(ReturnRefOfCopy(qName));
-    EXPECT_CALL(dns_request_->question_, qType()).WillRepeatedly(Return(qType));
-    EXPECT_CALL(dns_request_->question_, qClass()).WillRepeatedly(Return(C_IN));
+    EXPECT_CALL(dns_request_->question_, qType()).WillRepeatedly(Return(question_type_));
+    EXPECT_CALL(dns_request_->question_, qClass()).WillRepeatedly(Return(question_class_));
 
     callback_ = [](const Formats::ResponseMessageSharedPtr&, Buffer::Instance&) {};
 
     server_ = std::make_unique<DnsServerImpl>(callback_, config_, dispatcher_, cluster_manager_);
   }
 
-  void addExpectCallsForClusterManagerResult(uint16_t qType) {
+  void addExpectCallsForClusterManagerResult() {
     EXPECT_CALL(cluster_manager_, get(_)).Times(1);
     EXPECT_CALL(cluster_manager_.thread_local_cluster_, prioritySet()).Times(1);
 
@@ -64,9 +78,9 @@ public:
     EXPECT_CALL(*host_set, hosts()).Times(1);
 
     Network::Address::InstanceConstSharedPtr address;
-    if (qType == T_A || qType == T_SRV) {
+    if (question_type_ == T_A || question_type_ == T_SRV) {
       address = std::make_shared<Network::Address::Ipv4Instance>("1.1.1.1", 1);
-    } else if (qType == T_AAAA) {
+    } else if (question_type_ == T_AAAA) {
       address = std::make_shared<Network::Address::Ipv6Instance>("::1", 0);
     }
 
@@ -77,59 +91,69 @@ public:
         std::move(host_set_ptr));
   }
 
-  void testKnownDomainDNSQuerySuccess(uint16_t qType) {
-    setup(qType, "www.known.com");
+  void testKnownDomainDNSQuerySuccess() {
+    setup("www.known.com");
+    bool dns_query_supported = isDnsMessageSupported();
 
     EXPECT_CALL(*dns_resolver_, resolve(_, _, _)).Times(0);
-
     std::unordered_map<std::string, std::string> dns_map = {{"www.known.com", "cluster0"}};
 
-    EXPECT_CALL(config_, belongsToKnownDomainName(_)).WillOnce(Return(true));
-    EXPECT_CALL(config_, dnsMap()).WillRepeatedly((ReturnRef(dns_map)));
-    addExpectCallsForClusterManagerResult(qType);
+    if (dns_query_supported) {
+      EXPECT_CALL(config_, belongsToKnownDomainName(_)).WillOnce(Return(true));
+      EXPECT_CALL(config_, dnsMap()).WillRepeatedly((ReturnRef(dns_map)));
+      addExpectCallsForClusterManagerResult();
+    }
 
     EXPECT_CALL(*dns_request_, createResponseMessage(_))
         .WillOnce(Invoke([&](const Formats::Message::ResponseOptions& response_options)
                              -> Formats::ResponseMessageSharedPtr {
-          EXPECT_EQ(response_options.authoritative_bit, true);
-          EXPECT_EQ(response_options.response_code, NOERROR);
+          if (dns_query_supported) {
+            EXPECT_EQ(response_options.authoritative_bit, true);
+            EXPECT_EQ(response_options.response_code, NOERROR);
+          } else {
+            EXPECT_EQ(response_options.authoritative_bit, false);
+            EXPECT_EQ(response_options.response_code, NOTIMP);
+          }
 
           return this->dns_response_;
         }));
 
-    EXPECT_CALL(config_, ttl()).WillRepeatedly(Return(result_ttl_));
-
-    switch (qType) {
-    case T_A:
-      EXPECT_CALL(*dns_response_, addARecord(_, _, _))
-          .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
-                               const Network::Address::Ipv4* address) -> void {
-            EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
-            EXPECT_EQ(section, Formats::ResourceRecordSection::Answer);
-            EXPECT_EQ(address != nullptr, true);
-          }));
-      break;
-    case T_AAAA:
-      EXPECT_CALL(*dns_response_, addAAAARecord(_, _, _))
-          .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
-                               const Network::Address::Ipv6* address) -> void {
-            EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
-            EXPECT_EQ(section, Formats::ResourceRecordSection::Answer);
-            EXPECT_EQ(address != nullptr, true);
-          }));
-      break;
-    case T_SRV:
-      EXPECT_CALL(*dns_response_, addARecord(_, _, _))
-          .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
-                               const Network::Address::Ipv4* address) -> void {
-            EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
-            EXPECT_EQ(section, Formats::ResourceRecordSection::Additional);
-            EXPECT_EQ(address != nullptr, true);
-          }));
-      EXPECT_CALL(*dns_response_, addSRVRecord(_, _, _)).Times(1);
-      break;
-    default:
-      GTEST_FATAL_FAILURE_("Unexpected qType in TestKnownDNSQuerySuccess");
+    if (dns_query_supported) {
+      switch (question_type_) {
+      case T_A:
+        EXPECT_CALL(config_, ttl()).WillRepeatedly(Return(result_ttl_));
+        EXPECT_CALL(*dns_response_, addARecord(_, _, _))
+            .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
+                                 const Network::Address::Ipv4* address) -> void {
+              EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
+              EXPECT_EQ(section, Formats::ResourceRecordSection::Answer);
+              EXPECT_EQ(address != nullptr, true);
+            }));
+        break;
+      case T_AAAA:
+        EXPECT_CALL(config_, ttl()).WillRepeatedly(Return(result_ttl_));
+        EXPECT_CALL(*dns_response_, addAAAARecord(_, _, _))
+            .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
+                                 const Network::Address::Ipv6* address) -> void {
+              EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
+              EXPECT_EQ(section, Formats::ResourceRecordSection::Answer);
+              EXPECT_EQ(address != nullptr, true);
+            }));
+        break;
+      case T_SRV:
+        EXPECT_CALL(config_, ttl()).WillRepeatedly(Return(result_ttl_));
+        EXPECT_CALL(*dns_response_, addARecord(_, _, _))
+            .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
+                                 const Network::Address::Ipv4* address) -> void {
+              EXPECT_EQ(static_cast<uint32_t>(result_ttl_.count()), ttl);
+              EXPECT_EQ(section, Formats::ResourceRecordSection::Additional);
+              EXPECT_EQ(address != nullptr, true);
+            }));
+        EXPECT_CALL(*dns_response_, addSRVRecord(_, _, _)).Times(1);
+        break;
+      default:
+        GTEST_FATAL_FAILURE_("Unexpected qType in TestKnownDNSQuerySuccess");
+      }
     }
 
     EXPECT_CALL(*dns_response_, encode(_)).Times(1);
@@ -139,8 +163,7 @@ public:
 
   // Empty result_list simulates failure to resolve
   void testUnKnownDomainDNSQuery(std::list<Network::Address::InstanceConstSharedPtr> result_list) {
-    setup(T_A, "www.unknown.com");
-    bool success = !result_list.empty();
+    setup("www.unknown.com");
 
     EXPECT_CALL(config_, belongsToKnownDomainName(_)).WillOnce(Return(false));
 
@@ -156,18 +179,13 @@ public:
         .WillOnce(Invoke([&](const Formats::Message::ResponseOptions& response_options)
                              -> Formats::ResponseMessageSharedPtr {
           EXPECT_EQ(response_options.authoritative_bit, false);
-          if (success) {
-            EXPECT_EQ(response_options.response_code, NOERROR);
-          } else {
-            EXPECT_EQ(response_options.response_code, SERVFAIL);
-          }
+          EXPECT_EQ(response_options.response_code, response_code_);
 
           return this->dns_response_;
         }));
 
-    if (success) {
+    if (!result_list.empty()) {
       EXPECT_CALL(config_, ttl()).WillOnce(Return(result_ttl_));
-
       EXPECT_CALL(*dns_response_, addARecord(_, _, _))
           .WillOnce(Invoke([&](Formats::ResourceRecordSection section, uint32_t ttl,
                                const Network::Address::Ipv4* address) -> void {
@@ -175,8 +193,6 @@ public:
             EXPECT_EQ(section, Formats::ResourceRecordSection::Answer);
             EXPECT_EQ(address != nullptr, true);
           }));
-    } else {
-      EXPECT_CALL(*dns_response_, addARecord(_, _, _)).Times(0);
     }
 
     EXPECT_CALL(*dns_response_, addAAAARecord(_, _, _)).Times(0);
@@ -188,6 +204,11 @@ public:
 
   // Request
   std::shared_ptr<NiceMock<Formats::MockMessage>> dns_request_;
+  uint16_t opCode_ = 0;
+  uint16_t question_count_ = 1;
+  uint16_t question_class_ = C_IN;
+  uint16_t question_type_ = T_A;
+  uint16_t response_code_ = NOERROR;
 
   // Response
   std::shared_ptr<NiceMock<Formats::MockMessage>> dns_response_;
@@ -209,13 +230,40 @@ TEST_F(ServerImplTest, externalDnsQuerySuccess) {
   testUnKnownDomainDNSQuery({result});
 }
 
-TEST_F(ServerImplTest, externalDnsQueryFail) { testUnKnownDomainDNSQuery({}); }
+TEST_F(ServerImplTest, externalDnsQueryFail) {
+  response_code_ = SERVFAIL;
+  testUnKnownDomainDNSQuery({});
+}
 
-TEST_F(ServerImplTest, knownDnsQueryA) { testKnownDomainDNSQuerySuccess(T_A); }
+TEST_F(ServerImplTest, knownDnsQueryA) { testKnownDomainDNSQuerySuccess(); }
 
-TEST_F(ServerImplTest, knownDnsQueryAAAA) { testKnownDomainDNSQuerySuccess(T_AAAA); }
+TEST_F(ServerImplTest, knownDnsQueryAAAA) { testKnownDomainDNSQuerySuccess(); }
 
-TEST_F(ServerImplTest, knownDnsQuerySRV) { testKnownDomainDNSQuerySuccess(T_SRV); }
+TEST_F(ServerImplTest, knownDnsQuerySRV) { testKnownDomainDNSQuerySuccess(); }
+
+TEST_F(ServerImplTest, notSupportedQuestionType) {
+  response_code_ = NOTIMP;
+  question_type_ = T_SOA;
+  testKnownDomainDNSQuerySuccess();
+}
+
+TEST_F(ServerImplTest, notSupportedQuestionClass) {
+  response_code_ = NOTIMP;
+  question_class_ = C_HS;
+  testKnownDomainDNSQuerySuccess();
+}
+
+TEST_F(ServerImplTest, notSupportedHeaderopCode) {
+  response_code_ = NOTIMP;
+  opCode_ = 1;
+  testKnownDomainDNSQuerySuccess();
+}
+
+TEST_F(ServerImplTest, notSupportedHeaderqdCount) {
+  response_code_ = NOTIMP;
+  question_count_ = 2;
+  testKnownDomainDNSQuerySuccess();
+}
 
 } // namespace Dns
 } // namespace ListenerFilters
