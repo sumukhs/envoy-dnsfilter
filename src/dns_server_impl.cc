@@ -1,6 +1,9 @@
-#include "common/network/dns_impl.h"
+#include "ares.h"
+#include "ares_dns.h"
 
+#include "common/network/dns_impl.h"
 #include "common/common/assert.h"
+
 #include "envoy/upstream/cluster_manager.h"
 #include "envoy/upstream/thread_local_cluster.h"
 #include "envoy/upstream/upstream.h"
@@ -42,6 +45,12 @@ void DnsServerImpl::resolve(const Formats::RequestMessageConstSharedPtr& dns_req
             log_dns_question(dns_request));
 
   const Formats::QuestionRecord& question = dns_request->questionRecord();
+
+  if (!isSupportedQuery(dns_request)) {
+    constructFailedResponseAndInvokeCallback(dns_request, NOTIMP);
+    return;
+  }
+
   if (question.qType() == T_A || question.qType() == T_AAAA) {
     resolveAorAAAA(dns_request);
   } else {
@@ -252,6 +261,52 @@ void DnsServerImpl::serializeAndInvokeCallback(Formats::ResponseMessageSharedPtr
             response_buffer.length());
 
   resolve_callback_(dns_response, response_buffer);
+}
+
+bool DnsServerImpl::isSupportedQuery(
+    const Formats::RequestMessageConstSharedPtr& dns_request) const {
+
+  const Formats::Header& header = dns_request->header();
+
+  if (header.qrCode() != Formats::MessageType::Query) {
+    // Only query is supported
+    ENVOY_LOG(debug, "DNS:NotSupported. Only Query supported, but the response bit is set.");
+    return false;
+  }
+
+  if (header.opCode() != 0) {
+    // Only support standard opcode queries.
+    ENVOY_LOG(debug, "DNS:NotSupported. Only opCode 0 supported.OpCode = {}", header.opCode());
+    return false;
+  }
+
+  if (header.qdCount() > 1) {
+    // Only 1 Query is supported per query. This is to eliminate the complexity required to handle
+    // resolving domains from external client and domains that are known to the filter.
+    // TODO(sumukhs): We could add support for resolving multiple external/known domains at once
+    // however.
+    ENVOY_LOG(debug, "DNS:NotSupported. Only 1 Question supported");
+    return false;
+  }
+
+  const Formats::QuestionRecord& question = dns_request->questionRecord();
+
+  if (question.qClass() != C_IN) {
+    // Only support standard opcode queries.
+    ENVOY_LOG(debug, "DNS:NotSupported. Only standard query class C_IN supported. qClass = {}",
+              question.qClass());
+    return false;
+  }
+
+  if (question.qType() != T_A && question.qType() != T_AAAA && question.qType() != T_SRV) {
+    // Only these 3 questions are supported.
+    ENVOY_LOG(debug,
+              "DNS:NotSupported. Only T_A|T_AAAA|T_SRV question types are supported. qType = {}",
+              question.qType());
+    return false;
+  }
+
+  return true;
 }
 
 } // namespace Dns

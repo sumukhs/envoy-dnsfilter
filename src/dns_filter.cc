@@ -35,25 +35,23 @@ void DnsFilter::onData(Network::UdpRecvData& data) {
   return;
 }
 
-DecoderPtr ProdDnsFilter::createDecoder(DecoderCallbacks& callbacks) {
-  return DecoderPtr{new DecoderImpl(callbacks)};
-}
+DecoderPtr ProdDnsFilter::createDecoder() { return DecoderPtr{new DecoderImpl()}; }
 
 void DnsFilter::doDecode(Buffer::Instance& buffer,
                          Network::Address::InstanceConstSharedPtr const& from) {
   if (!decoder_) {
-    decoder_ = createDecoder(*this);
+    decoder_ = createDecoder();
   }
 
   try {
-    decoder_->decode(buffer, from);
+    Formats::RequestMessageConstSharedPtr dns_request = decoder_->decode(buffer, from);
+    dns_server_->resolve(dns_request);
   } catch (EnvoyException& e) {
+    // The request could not be decoded into a dns message. We will not be able to send back a
+    // response since the question could not be decoded successfully. This can happen if the sender
+    // is malicious or if there was a packet corruption.
     ENVOY_LOG(info, "dns decoding error: {}", e.what());
   }
-}
-
-void DnsFilter::onQuery(Formats::RequestMessageConstSharedPtr dns_message) {
-  dns_server_->resolve(dns_message);
 }
 
 void DnsFilter::onResolveComplete(const Formats::ResponseMessageSharedPtr& dns_message,

@@ -35,6 +35,8 @@ public:
   void resolve(const Formats::RequestMessageConstSharedPtr& dns_request) override;
 
 private:
+  bool isSupportedQuery(const Formats::RequestMessageConstSharedPtr& dns_request) const;
+
   void resolveAorAAAA(const Formats::RequestMessageConstSharedPtr& dns_request);
 
   void resolveSRV(const Formats::RequestMessageConstSharedPtr& dns_request);

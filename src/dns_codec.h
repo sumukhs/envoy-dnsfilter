@@ -64,6 +64,9 @@ public:
 
   virtual ~Message() = default;
 
+  /**
+   * The address of the dns query client.
+   */
   virtual const Network::Address::InstanceConstSharedPtr& from() const PURE;
 
   /**
@@ -130,6 +133,11 @@ public:
   virtual MessageType qrCode() const PURE;
 
   /**
+   * Gets the Opcode of the query
+   */
+  virtual uint16_t opCode() const PURE;
+
+  /**
    * Gets the response code
    */
   virtual uint16_t rCode() const PURE;
@@ -187,6 +195,11 @@ public:
    * The question type - T_A or other types
    */
   virtual uint16_t qType() const PURE;
+
+  /**
+   * The question class
+   */
+  virtual uint16_t qClass() const PURE;
 };
 
 /**
@@ -236,24 +249,23 @@ public:
 } // namespace Formats
 
 /**
- * Callbacks for dispatching decoded DNS messages.
- */
-class DecoderCallbacks {
-public:
-  virtual ~DecoderCallbacks() = default;
-
-  virtual void onQuery(Formats::RequestMessageConstSharedPtr dns_message) PURE;
-};
-
-/**
  * DNS message decoder.
  */
 class Decoder {
 public:
   virtual ~Decoder() = default;
 
-  virtual void decode(Buffer::Instance& data,
-                      const Network::Address::InstanceConstSharedPtr& from) PURE;
+  /**
+   * Decodes the contents of data into a dns query message.
+   * @param data is the buffer instance backing the contents of the dns query.
+   * @param from is the address of the query requestor.
+   * @return Formats::RequestMessageConstSharedPtr is the decoded dns query.
+   *
+   * Throws EnvoyException if the dns query cannot be constructed. This mostly indicates a
+   * corruption on the wire or a rogue client.
+   */
+  virtual Formats::RequestMessageConstSharedPtr
+  decode(Buffer::Instance& data, const Network::Address::InstanceConstSharedPtr& from) PURE;
 };
 
 using DecoderPtr = std::unique_ptr<Decoder>;

@@ -11,19 +11,6 @@ namespace Extensions {
 namespace ListenerFilters {
 namespace Dns {
 
-namespace {
-
-void throwIfNotSupportedType(uint16_t type) {
-  switch (type) {
-  case T_A:
-  case T_AAAA:
-  case T_SRV:
-    break;
-  default:
-    throw EnvoyException(fmt::format("DNS Type {} not supported", type));
-  }
-}
-
 void encodeDomainString(Buffer::Instance& dns_response, const std::string& name) {
   std::stringstream stream(name);
   // represents the part of the domain within the '.' character
@@ -52,8 +39,6 @@ void add4DnsBytes(Buffer::Instance& dns_response, uint32_t value) {
   dns_response.add(&dns_value, 4);
 }
 
-} // namespace
-
 // Begin HeaderSectionImpl
 DecoderImpl::HeaderSectionImpl::HeaderSectionImpl() : header_() {
   std::fill(std::begin(header_), std::end(header_), 0);
@@ -69,6 +54,8 @@ Formats::MessageType DecoderImpl::HeaderSectionImpl::qrCode() const {
   return DNS_HEADER_QR(&header_[0]) == 0 ? Formats::MessageType::Query
                                          : Formats::MessageType::Response;
 }
+
+uint16_t DecoderImpl::HeaderSectionImpl::opCode() const { return DNS_HEADER_OPCODE(&header_[0]); }
 
 uint16_t DecoderImpl::HeaderSectionImpl::rCode() const { return DNS_HEADER_RCODE(&header_[0]); }
 
@@ -123,9 +110,6 @@ size_t DecoderImpl::HeaderSectionImpl::decode(Buffer::RawSlice& request, size_t 
 
   std::memcpy(reinterpret_cast<void*>(header_), request.mem_, HFIXEDSZ);
 
-  // Validate the the contents are supported
-  ThrowIfNotSupported();
-
   return HFIXEDSZ;
 }
 
@@ -133,19 +117,6 @@ void DecoderImpl::HeaderSectionImpl::encode(Buffer::Instance& response) const {
   response.add(&header_[0], HFIXEDSZ);
 }
 
-void DecoderImpl::HeaderSectionImpl::ThrowIfNotSupported() {
-  // Only support queries.
-  if (DNS_HEADER_QR(&header_[0])) {
-    throw EnvoyException("Only DNS queries supported. DNS Responses not handled by the server");
-  }
-
-  // Only support standard opcode queries.
-  auto op_code = DNS_HEADER_OPCODE(&header_[0]);
-  if (op_code != 0) {
-    throw EnvoyException(
-        fmt::format("Only standard DNS query supported. OpCode {} Not supported", op_code));
-  }
-}
 // End HeaderSectionImpl
 
 // Begin QuestionRecordImpl
@@ -157,6 +128,8 @@ DecoderImpl::QuestionRecordImpl::QuestionRecordImpl(
       q_class_(request_question.q_class_) {}
 
 uint16_t DecoderImpl::QuestionRecordImpl::qType() const { return q_type_; }
+
+uint16_t DecoderImpl::QuestionRecordImpl::qClass() const { return q_class_; }
 
 const std::string& DecoderImpl::QuestionRecordImpl::qName() const { return q_name_; }
 
@@ -198,17 +171,6 @@ void DecoderImpl::QuestionRecordImpl::encode(Buffer::Instance& dns_response) con
 
   add2DnsBytes(dns_response, q_type_);
   add2DnsBytes(dns_response, q_class_);
-}
-
-void DecoderImpl::QuestionRecordImpl::ThrowIfNotSupported() {
-  throwIfNotSupportedType(q_type_);
-
-  switch (q_class_) {
-  case C_IN:
-    break;
-  default:
-    throw EnvoyException(fmt::format("DNS Question Class {} not supported", q_class_));
-  }
 }
 // End QuestionRecordImpl
 
@@ -346,12 +308,6 @@ size_t DecoderImpl::MessageImpl::decode(Buffer::RawSlice& dns_request, size_t of
   size_t size = 0;
 
   size += header_.decode(dns_request, size);
-
-  if (header_.qdCount() > 1) {
-    throw EnvoyException(
-        fmt::format("DNS Request qdCount is {}. Only 1 is supported", header_.qdCount()));
-  }
-
   size += question_.decode(dns_request, size);
 
   return size;
@@ -455,10 +411,8 @@ void DecoderImpl::MessageImpl::UpdateAnswerCountInHeader(Formats::ResourceRecord
 // End MessageImpl
 
 // Begin DecoderImpl
-DecoderImpl::DecoderImpl(DecoderCallbacks& callbacks) : callbacks_(callbacks) {}
-
-void DecoderImpl::decode(Buffer::Instance& data,
-                         const Network::Address::InstanceConstSharedPtr& from) {
+Formats::RequestMessageConstSharedPtr
+DecoderImpl::decode(Buffer::Instance& data, const Network::Address::InstanceConstSharedPtr& from) {
   ENVOY_LOG(trace, "decoding {} bytes", data.length());
 
   // Linearize the entire request into a single buffer as the requests are generally under 512
@@ -471,7 +425,7 @@ void DecoderImpl::decode(Buffer::Instance& data,
   message->decode(raw_slice, 0);
   Formats::RequestMessageConstSharedPtr message_sharedptr(message);
 
-  callbacks_.onQuery(message_sharedptr);
+  return message_sharedptr;
 }
 // End DecoderImpl
 

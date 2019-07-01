@@ -31,20 +31,15 @@ class Config;
 /**
  * Implements the Dns filter.
  */
-class DnsFilter : public Network::UdpListenerReadFilter,
-                  public DecoderCallbacks,
-                  Logger::Loggable<Logger::Id::filter> {
+class DnsFilter : public Network::UdpListenerReadFilter, Logger::Loggable<Logger::Id::filter> {
 public:
   DnsFilter(std::unique_ptr<Config>&& config, Network::UdpReadFilterCallbacks& callbacks,
             Upstream::ClusterManager& cluster_manager);
 
-  virtual DecoderPtr createDecoder(DecoderCallbacks& callbacks) PURE;
+  virtual DecoderPtr createDecoder() PURE;
 
   // Network::UdpListenerReadFilter
   void onData(Network::UdpRecvData& data) override;
-
-  // DecoderCallbacks
-  void onQuery(Formats::RequestMessageConstSharedPtr dns_message) override;
 
 private:
   void doDecode(Buffer::Instance& buffer, Network::Address::InstanceConstSharedPtr const& from);
@@ -62,7 +57,7 @@ public:
   using DnsFilter::DnsFilter;
 
   // DnsFilter
-  DecoderPtr createDecoder(DecoderCallbacks& callbacks) override;
+  DecoderPtr createDecoder() override;
 };
 
 } // namespace Dns

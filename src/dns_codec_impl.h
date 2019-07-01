@@ -31,11 +31,9 @@ public:
 
 class DecoderImpl : public Decoder, Logger::Loggable<Logger::Id::filter> {
 public:
-  DecoderImpl(DecoderCallbacks& callbacks);
-
   // Dns::Decoder methods
-  void decode(Buffer::Instance& data,
-              const Network::Address::InstanceConstSharedPtr& from) override;
+  Formats::RequestMessageConstSharedPtr
+  decode(Buffer::Instance& data, const Network::Address::InstanceConstSharedPtr& from) override;
 
 private:
   class HeaderSectionImpl : public Formats::Header, public Formats::Encode, public Decode {
@@ -45,6 +43,7 @@ private:
 
     // Formats::HeaderSection
     Formats::MessageType qrCode() const override;
+    uint16_t opCode() const override;
     uint16_t rCode() const override;
     bool rd() const override;
     uint16_t qdCount() const override;
@@ -67,8 +66,6 @@ private:
     void ra(bool value);
 
   private:
-    void ThrowIfNotSupported();
-
     unsigned char header_[HFIXEDSZ];
   };
 
@@ -80,6 +77,7 @@ private:
     // Formats::QuestionRecord
     const std::string& qName() const override;
     uint16_t qType() const override;
+    uint16_t qClass() const override;
 
     // Decode
     size_t decode(Buffer::RawSlice& dns_request, size_t offset) override;
@@ -88,8 +86,6 @@ private:
     void encode(Buffer::Instance& dns_response) const override;
 
   private:
-    void ThrowIfNotSupported();
-
     std::string q_name_;
     uint16_t q_type_;
     uint16_t q_class_;
@@ -203,8 +199,6 @@ private:
     std::vector<ResourceRecordImplPtr> answers_;
     std::vector<ResourceRecordImplPtr> additional_;
   };
-
-  DecoderCallbacks& callbacks_;
 };
 
 } // namespace Dns

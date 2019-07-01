@@ -40,8 +40,13 @@ public:
     dns_request_ = std::make_shared<NiceMock<Formats::MockMessage>>(from);
     dns_response_ = std::make_shared<NiceMock<Formats::MockMessage>>(from);
 
+    EXPECT_CALL(dns_request_->header_, qrCode())
+        .WillRepeatedly(Return(Formats::MessageType::Query));
+    EXPECT_CALL(dns_request_->header_, opCode()).WillRepeatedly(Return(0));
+    EXPECT_CALL(dns_request_->header_, qdCount()).WillRepeatedly(Return(1));
     EXPECT_CALL(dns_request_->question_, qName()).WillRepeatedly(ReturnRefOfCopy(qName));
     EXPECT_CALL(dns_request_->question_, qType()).WillRepeatedly(Return(qType));
+    EXPECT_CALL(dns_request_->question_, qClass()).WillRepeatedly(Return(C_IN));
 
     callback_ = [](const Formats::ResponseMessageSharedPtr&, Buffer::Instance&) {};
 

@@ -35,6 +35,7 @@ public:
   MOCK_CONST_METHOD0(qrCode, MessageType());
   MOCK_CONST_METHOD0(rCode, uint16_t());
   MOCK_CONST_METHOD0(rd, bool());
+  MOCK_CONST_METHOD0(opCode, uint16_t());
   MOCK_CONST_METHOD0(qdCount, uint16_t());
   MOCK_CONST_METHOD0(anCount, uint16_t());
   MOCK_CONST_METHOD0(nsCount, uint16_t());
@@ -49,6 +50,7 @@ public:
   // Formats::Question
   MOCK_CONST_METHOD0(qName, const std::string&());
   MOCK_CONST_METHOD0(qType, uint16_t());
+  MOCK_CONST_METHOD0(qClass, uint16_t());
 };
 
 class MockMessage : public Message {
